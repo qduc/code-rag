@@ -58,7 +58,7 @@ class SyntaxChunker:
                 return None
         return self._parsers[language_name]
 
-    def chunk(self, content: str, language_name: str) -> List[str]:
+    def chunk(self, content: str, language_name: str) -> List[Dict[str, any]]:
         """
         Chunk content using syntax-aware splitting.
 
@@ -67,7 +67,7 @@ class SyntaxChunker:
             language_name: The tree-sitter language identifier (e.g. 'python', 'javascript')
 
         Returns:
-            List of text chunks
+            List of dictionaries with 'text', 'start_byte', and 'end_byte' keys
         """
         parser = self._get_parser(language_name)
         if not parser:
@@ -80,8 +80,8 @@ class SyntaxChunker:
             print(f"Error parsing content for syntax chunking: {e}")
             return []
 
-    def _chunk_tree(self, root_node: Node, content: str) -> List[str]:
-        """Process the syntax tree and generate chunks."""
+    def _chunk_tree(self, root_node: Node, content: str) -> List[Dict[str, any]]:
+        """Process the syntax tree and generate chunks with byte offsets."""
 
         # 1. Flatten the tree into a stream of "atomic" nodes (small enough or irreducible)
         atoms = self._get_atoms(root_node)
@@ -138,8 +138,8 @@ class SyntaxChunker:
 
         return segments
 
-    def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[str]:
-        """Group segments into chunks respecting chunk_size."""
+    def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[Dict[str, any]]:
+        """Group segments into chunks respecting chunk_size, with byte offset tracking."""
         chunks = []
         current_chunk_segments = []
         current_chunk_len = 0
@@ -151,7 +151,8 @@ class SyntaxChunker:
             if current_chunk_len + segment_len > self.chunk_size:
                 # If we have accumulated content, flush it
                 if current_chunk_segments:
-                    chunks.append(self._build_chunk_text(current_chunk_segments, content))
+                    chunk_data = self._build_chunk_data(current_chunk_segments, content)
+                    chunks.append(chunk_data)
                     current_chunk_segments = []
                     current_chunk_len = 0
 
@@ -163,7 +164,11 @@ class SyntaxChunker:
                     # Simple fallback: just add it. The embedding model might truncate it.
                     # Or we could use the text-based chunker here recursively?
                     # Let's just add it for now to keep it simple.
-                    chunks.append(content[start:end])
+                    chunks.append({
+                        "text": content[start:end],
+                        "start_byte": start,
+                        "end_byte": end
+                    })
                 else:
                     # Start a new chunk with this segment
                     current_chunk_segments.append((start, end))
@@ -175,12 +180,13 @@ class SyntaxChunker:
 
         # Flush remaining
         if current_chunk_segments:
-            chunks.append(self._build_chunk_text(current_chunk_segments, content))
+            chunk_data = self._build_chunk_data(current_chunk_segments, content)
+            chunks.append(chunk_data)
 
         return chunks
 
-    def _build_chunk_text(self, segments: List[Tuple[int, int]], content: str) -> str:
-        """Reconstruct text from segments."""
+    def _build_chunk_data(self, segments: List[Tuple[int, int]], content: str) -> Dict[str, any]:
+        """Reconstruct text from segments and return with byte offsets."""
         # Since segments are contiguous ranges from the original content,
         # we can technically just take content[first_start:last_end]
         # IF the segments are contiguous.
@@ -189,8 +195,12 @@ class SyntaxChunker:
         # Within a chunk, the segments should be contiguous.
 
         if not segments:
-            return ""
+            return {"text": "", "start_byte": 0, "end_byte": 0}
 
         start = segments[0][0]
         end = segments[-1][1]
-        return content[start:end]
+        return {
+            "text": content[start:end],
+            "start_byte": start,
+            "end_byte": end
+        }

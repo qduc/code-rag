@@ -8,6 +8,21 @@ from typing import List, Dict, Any, Optional, Set
 from .syntax_chunker import SyntaxChunker
 
 
+def byte_offset_to_line_number(content: str, byte_offset: int) -> int:
+    """
+    Convert a byte offset to a line number.
+
+    Args:
+        content: The full text content
+        byte_offset: Byte position in the content
+
+    Returns:
+        Line number (1-indexed)
+    """
+    # Count newlines up to the byte offset
+    return content[:byte_offset].count('\n') + 1
+
+
 class FileProcessor:
     """Handles file discovery and reading for codebase processing."""
 
@@ -325,13 +340,35 @@ class FileProcessor:
 
         result = []
         for i, chunk in enumerate(chunks):
+            # Handle both dict (from syntax chunker) and str (from basic chunker)
+            if isinstance(chunk, dict):
+                chunk_text = chunk["text"]
+                start_byte = chunk["start_byte"]
+                end_byte = chunk["end_byte"]
+                start_line = byte_offset_to_line_number(content, start_byte)
+                end_line = byte_offset_to_line_number(content, end_byte)
+            else:
+                # Basic chunking - calculate position manually
+                chunk_text = chunk
+                # Find position of this chunk in content
+                start_byte = content.find(chunk_text)
+                if start_byte == -1:
+                    start_byte = 0
+                end_byte = start_byte + len(chunk_text)
+                start_line = byte_offset_to_line_number(content, start_byte)
+                end_line = byte_offset_to_line_number(content, end_byte)
+
             result.append({
                 "id": f"{file_path}:chunk_{i}",
-                "content": chunk,
+                "content": chunk_text,
                 "metadata": {
                     "file_path": file_path,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "start_byte": start_byte,
+                    "end_byte": end_byte,
                 },
             })
 

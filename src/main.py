@@ -13,6 +13,7 @@ from .embeddings.embedding_interface import EmbeddingInterface
 from .embeddings.openai_embedding import OpenAIEmbedding
 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
 from .processor.file_processor import FileProcessor
+from pathlib import PurePath
 
 
 def process_codebase(
@@ -142,6 +143,8 @@ def query_session(
                 file_path = metadata.get("file_path", "Unknown")
                 chunk_index = metadata.get("chunk_index", 0)
                 total_chunks = metadata.get("total_chunks", 1)
+                start_line = metadata.get("start_line")
+                end_line = metadata.get("end_line")
 
                 # Calculate similarity score (1 - distance for cosine)
                 similarity = 1 - distance
@@ -149,7 +152,10 @@ def query_session(
                 print("-" * 60)
                 print(f"Result {i + 1} | Similarity: {similarity:.4f}")
                 print(f"File: {file_path}")
-                print(f"Chunk: {chunk_index + 1}/{total_chunks}")
+                if start_line and end_line:
+                    print(f"Lines: {start_line}-{end_line} | Chunk: {chunk_index + 1}/{total_chunks}")
+                else:
+                    print(f"Chunk: {chunk_index + 1}/{total_chunks}")
                 print("-" * 60)
 
                 # Truncate long documents for display
@@ -163,6 +169,37 @@ def query_session(
         except Exception as e:
             print(f"\nError during query: {e}")
 
+def looks_like_codebase(root_path: Path, processor: FileProcessor) -> bool:
+    """Heuristic: return True if the folder likely contains a codebase.
+
+    Checks for common repo files/dirs, then falls back to counting discovered source files.
+    """
+    markers = [
+        "setup.py",
+        "pyproject.toml",
+        "requirements.txt",
+        "Pipfile",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "Cargo.toml",
+        "go.mod",
+        ".git",
+        "src",
+    ]
+
+    try:
+        for m in markers:
+            if (root_path / m).exists():
+                return True
+
+        # Fallback: if discover_files finds a reasonable number of source files,
+        # consider it a codebase. Small threshold avoids misdetecting home dirs.
+        files = processor.discover_files(str(root_path))
+        return len(files) >= 5
+    except Exception:
+        # On any unexpected error, be conservative and treat as non-codebase
+        return False
 
 def main():
     """Main entry point for the code-rag CLI tool."""
@@ -269,6 +306,21 @@ def main():
 
     # Check if codebase needs processing
     if args.reindex or not database.is_processed():
+        processor = FileProcessor()
+
+        # If the folder doesn't look like a codebase, ask for confirmation
+        if not looks_like_codebase(codebase_path, processor):
+            print("\nWarning: The target directory does not appear to contain a typical codebase.")
+            try:
+                resp = input("Continue indexing this directory? [y/N]: ").strip().lower()
+            except KeyboardInterrupt:
+                print("\nAborting.")
+                sys.exit(1)
+
+            if resp not in ("y", "yes"):
+                print("Aborting indexing.")
+                sys.exit(0)
+
         if args.reindex:
             print("\nReindexing codebase...")
         else:
