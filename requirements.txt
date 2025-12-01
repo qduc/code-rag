@@ -1,0 +1,16 @@
+# Vector Database
+chromadb>=0.4.0
+
+# Embedding Models
+sentence-transformers>=2.2.0
+
+# Optional: For OpenAI embeddings
+openai>=0.27.0
+
+# Utilities
+python-dotenv>=0.21.0
+
+# Development (optional)
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
