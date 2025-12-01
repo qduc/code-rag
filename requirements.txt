@@ -6,7 +6,7 @@ qdrant-client>=1.7.0
 sentence-transformers
 
 # Optional: For OpenAI embeddings
-# openai
+openai
 
 # Utilities
 python-dotenv>=0.21.0

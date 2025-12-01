@@ -49,6 +49,24 @@ class QdrantDatabase(DatabaseInterface):
         collections = self.client.get_collections().collections
         collection_exists = any(col.name == collection_name for col in collections)
 
+        if collection_exists:
+            # Check for dimension mismatch
+            collection_info = self.client.get_collection(collection_name)
+            current_vectors = collection_info.config.params.vectors
+            current_size = None
+
+            # Handle VectorParams object or dict
+            if hasattr(current_vectors, "size"):
+                current_size = current_vectors.size
+            elif isinstance(current_vectors, dict) and "size" in current_vectors:
+                current_size = current_vectors["size"]
+
+            if current_size is not None and current_size != vector_size:
+                print(f"Dimension mismatch: Collection '{collection_name}' has size {current_size}, requested {vector_size}.")
+                print("Recreating collection with new dimension...")
+                self.client.delete_collection(collection_name)
+                collection_exists = False
+
         if not collection_exists:
             # Create collection with cosine distance
             self.client.create_collection(
@@ -169,6 +187,21 @@ class QdrantDatabase(DatabaseInterface):
             True if documents exist in the collection
         """
         return self.count() > 0
+
+    def delete_collection(self, collection_name: str) -> None:
+        """
+        Delete a collection from the database.
+
+        Args:
+            collection_name: Name of the collection to delete
+        """
+        try:
+            self.client.delete_collection(collection_name)
+            if self.collection_name == collection_name:
+                self.collection_name = None
+        except Exception:
+            # Collection does not exist or error occurred, which is fine
+            pass
 
     def close(self) -> None:
         """Close the database connection."""

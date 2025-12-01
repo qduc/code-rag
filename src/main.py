@@ -9,6 +9,8 @@ from .config.config import Config
 from .database.chroma_database import ChromaDatabase
 from .database.qdrant_database import QdrantDatabase
 from .database.database_interface import DatabaseInterface
+from .embeddings.embedding_interface import EmbeddingInterface
+from .embeddings.openai_embedding import OpenAIEmbedding
 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
 from .processor.file_processor import FileProcessor
 
@@ -16,7 +18,7 @@ from .processor.file_processor import FileProcessor
 def process_codebase(
     root_path: str,
     database: DatabaseInterface,
-    embedding_model: SentenceTransformerEmbedding,
+    embedding_model: EmbeddingInterface,
     config: Config,
 ) -> int:
     """
@@ -92,7 +94,7 @@ def process_codebase(
 
 def query_session(
     database: DatabaseInterface,
-    embedding_model: SentenceTransformerEmbedding,
+    embedding_model: EmbeddingInterface,
     n_results: int = 5,
 ) -> None:
     """
@@ -240,26 +242,30 @@ def main():
     # Initialize database
     db_path = config.get_database_path()
 
+    # Initialize embedding model
+    print("\nLoading embedding model...")
+    if config.embedding_model.startswith("text-embedding-"):
+        embedding_model = OpenAIEmbedding(config.embedding_model)
+    else:
+        embedding_model = SentenceTransformerEmbedding(config.embedding_model)
+    print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
+
     if args.database == "chroma":
         database = ChromaDatabase(persist_directory=db_path)
-        database.initialize("codebase")
+        vector_size = embedding_model.get_embedding_dimension()
+        if args.reindex:
+            database.delete_collection("codebase")
+        database.initialize("codebase", vector_size=vector_size)
     elif args.database == "qdrant":
         database = QdrantDatabase(persist_directory=db_path)
         # Get embedding dimension from model
-        temp_embedding = SentenceTransformerEmbedding(config.embedding_model)
-        vector_size = temp_embedding.get_embedding_dimension()
+        vector_size = embedding_model.get_embedding_dimension()
+        if args.reindex:
+            database.delete_collection("codebase")
         database.initialize("codebase", vector_size=vector_size)
     else:
         print(f"Error: Unsupported database type '{args.database}'")
         sys.exit(1)
-
-    # Initialize embedding model (reuse if already loaded for Qdrant)
-    print("\nLoading embedding model...")
-    if args.database == "qdrant":
-        embedding_model = temp_embedding
-    else:
-        embedding_model = SentenceTransformerEmbedding(config.embedding_model)
-    print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
 
     # Check if codebase needs processing
     if args.reindex or not database.is_processed():

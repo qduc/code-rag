@@ -8,12 +8,13 @@ class DatabaseInterface(ABC):
     """Abstract interface for vector databases."""
 
     @abstractmethod
-    def initialize(self, collection_name: str) -> None:
+    def initialize(self, collection_name: str, vector_size: int = 384) -> None:
         """
         Initialize or get a collection in the database.
 
         Args:
             collection_name: Name of the collection to initialize
+            vector_size: Dimension of the embedding vectors (default: 384 for all-MiniLM-L6-v2)
         """
         pass
 
@@ -49,6 +50,16 @@ class DatabaseInterface(ABC):
 
         Returns:
             Query results containing distances and documents
+        """
+        pass
+
+    @abstractmethod
+    def delete_collection(self, collection_name: str) -> None:
+        """
+        Delete a collection from the database.
+
+        Args:
+            collection_name: Name of the collection to delete
         """
         pass
 
