@@ -1,11 +1,13 @@
 # Vector Database
-chromadb>=0.4.0
+chromadb
+sqlite3>=3.35.0
+# qdrant-client>=1.7.0
 
 # Embedding Models
-sentence-transformers>=2.2.0
+sentence-transformers
 
 # Optional: For OpenAI embeddings
-openai>=0.27.0
+# openai
 
 # Utilities
 python-dotenv>=0.21.0

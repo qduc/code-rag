@@ -1,10 +1,29 @@
 """File processor for discovering and reading source code files."""
 
-from typing import List, Dict, Any
+import os
+import fnmatch
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Set
 
 
 class FileProcessor:
     """Handles file discovery and reading for codebase processing."""
+
+    # Common source code file extensions
+    SOURCE_EXTENSIONS = {
+        # Programming languages
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp",
+        ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".clj",
+        ".lua", ".r", ".m", ".mm", ".pl", ".pm", ".sh", ".bash", ".zsh",
+        # Web
+        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+        # Data/Config
+        ".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg", ".conf",
+        # Documentation
+        ".md", ".rst", ".txt",
+        # Build/DevOps
+        ".dockerfile", ".makefile", ".gradle", ".cmake",
+    }
 
     def __init__(self, ignore_patterns: List[str] = None):
         """
@@ -14,6 +33,7 @@ class FileProcessor:
             ignore_patterns: List of patterns to ignore during file discovery
         """
         self.ignore_patterns = ignore_patterns or self._default_ignore_patterns()
+        self._gitignore_patterns: Set[str] = set()
 
     def _default_ignore_patterns(self) -> List[str]:
         """Return default patterns to ignore."""
@@ -26,7 +46,108 @@ class FileProcessor:
             ".egg-info",
             "dist",
             "build",
+            ".code-rag",
+            ".idea",
+            ".vscode",
+            "*.pyc",
+            "*.pyo",
+            "*.egg",
+            "*.whl",
+            ".DS_Store",
+            "Thumbs.db",
         ]
+
+    def _load_gitignore(self, root_path: str) -> None:
+        """
+        Load .gitignore patterns from the root directory.
+
+        Args:
+            root_path: Root directory containing .gitignore
+        """
+        gitignore_path = Path(root_path) / ".gitignore"
+        if gitignore_path.exists():
+            try:
+                with open(gitignore_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        # Skip empty lines and comments
+                        if line and not line.startswith("#"):
+                            self._gitignore_patterns.add(line)
+            except Exception:
+                pass  # Silently ignore gitignore parsing errors
+
+    def _should_ignore(self, path: Path, root_path: Path) -> bool:
+        """
+        Check if a path should be ignored based on patterns.
+
+        Args:
+            path: The path to check
+            root_path: The root path for relative path calculation
+
+        Returns:
+            True if the path should be ignored
+        """
+        # Get relative path for pattern matching
+        try:
+            rel_path = path.relative_to(root_path)
+        except ValueError:
+            rel_path = path
+
+        rel_path_str = str(rel_path)
+        path_parts = rel_path.parts
+
+        # Check default ignore patterns
+        for pattern in self.ignore_patterns:
+            # Check if any path component matches the pattern
+            for part in path_parts:
+                if fnmatch.fnmatch(part, pattern):
+                    return True
+            # Check full relative path
+            if fnmatch.fnmatch(rel_path_str, pattern):
+                return True
+
+        # Check gitignore patterns
+        for pattern in self._gitignore_patterns:
+            # Handle directory patterns (ending with /)
+            if pattern.endswith("/"):
+                dir_pattern = pattern[:-1]
+                for part in path_parts:
+                    if fnmatch.fnmatch(part, dir_pattern):
+                        return True
+            else:
+                # Check against path components and full path
+                for part in path_parts:
+                    if fnmatch.fnmatch(part, pattern):
+                        return True
+                if fnmatch.fnmatch(rel_path_str, pattern):
+                    return True
+                # Handle patterns with wildcards
+                if fnmatch.fnmatch(path.name, pattern):
+                    return True
+
+        return False
+
+    def _is_source_file(self, path: Path) -> bool:
+        """
+        Check if a file is a source code file.
+
+        Args:
+            path: Path to the file
+
+        Returns:
+            True if it's a source code file
+        """
+        # Check extension
+        suffix = path.suffix.lower()
+        if suffix in self.SOURCE_EXTENSIONS:
+            return True
+
+        # Check special filenames without extensions
+        name_lower = path.name.lower()
+        if name_lower in {"makefile", "dockerfile", "vagrantfile", "gemfile", "rakefile"}:
+            return True
+
+        return False
 
     def discover_files(self, root_path: str) -> List[str]:
         """
@@ -38,10 +159,35 @@ class FileProcessor:
         Returns:
             List of file paths discovered
         """
-        # TODO: Implement file discovery
-        pass
+        root = Path(root_path).resolve()
+        self._load_gitignore(root_path)
 
-    def read_file(self, file_path: str) -> str:
+        discovered_files = []
+
+        for dirpath, dirnames, filenames in os.walk(root):
+            current_dir = Path(dirpath)
+
+            # Filter out ignored directories (modifying dirnames in-place)
+            dirnames[:] = [
+                d for d in dirnames
+                if not self._should_ignore(current_dir / d, root)
+            ]
+
+            # Process files
+            for filename in filenames:
+                file_path = current_dir / filename
+
+                # Skip ignored files
+                if self._should_ignore(file_path, root):
+                    continue
+
+                # Only include source files
+                if self._is_source_file(file_path):
+                    discovered_files.append(str(file_path))
+
+        return sorted(discovered_files)
+
+    def read_file(self, file_path: str) -> Optional[str]:
         """
         Read file contents, handling different encodings.
 
@@ -49,21 +195,110 @@ class FileProcessor:
             file_path: Path to the file to read
 
         Returns:
-            File contents as string
+            File contents as string, or None if reading fails
         """
-        # TODO: Implement file reading
-        pass
+        encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
-    def chunk_file(self, content: str, chunk_size: int = 1024) -> List[str]:
+        for encoding in encodings:
+            try:
+                with open(file_path, "r", encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                # Log error and return None for other exceptions
+                print(f"Error reading {file_path}: {e}")
+                return None
+
+        print(f"Could not decode {file_path} with any supported encoding")
+        return None
+
+    def chunk_file(
+        self,
+        content: str,
+        chunk_size: int = 1024,
+        overlap: int = 100,
+    ) -> List[str]:
         """
-        Split file content into chunks (naive approach).
+        Split file content into chunks with optional overlap.
+
+        Uses a naive character-based approach, trying to split at line boundaries.
 
         Args:
             content: File content to chunk
-            chunk_size: Size of each chunk in characters
+            chunk_size: Target size of each chunk in characters
+            overlap: Number of characters to overlap between chunks
 
         Returns:
             List of chunks
         """
-        # TODO: Implement chunking
-        pass
+        if not content:
+            return []
+
+        if len(content) <= chunk_size:
+            return [content]
+
+        chunks = []
+        start = 0
+
+        while start < len(content):
+            # Calculate end position
+            end = start + chunk_size
+
+            if end >= len(content):
+                # Last chunk
+                chunks.append(content[start:])
+                break
+
+            # Try to find a good break point (newline) near the end
+            # Search backwards from end for a newline
+            break_point = content.rfind("\n", start + chunk_size // 2, end)
+
+            if break_point == -1:
+                # No newline found, just use the chunk_size
+                break_point = end
+            else:
+                # Include the newline in the current chunk
+                break_point += 1
+
+            chunks.append(content[start:break_point])
+
+            # Move start position, accounting for overlap
+            start = break_point - overlap if overlap > 0 else break_point
+
+        return chunks
+
+    def process_file(
+        self,
+        file_path: str,
+        chunk_size: int = 1024,
+    ) -> List[Dict[str, Any]]:
+        """
+        Process a single file: read, chunk, and prepare for embedding.
+
+        Args:
+            file_path: Path to the file to process
+            chunk_size: Size of chunks to create
+
+        Returns:
+            List of dictionaries with chunk data and metadata
+        """
+        content = self.read_file(file_path)
+        if content is None:
+            return []
+
+        chunks = self.chunk_file(content, chunk_size)
+
+        result = []
+        for i, chunk in enumerate(chunks):
+            result.append({
+                "id": f"{file_path}:chunk_{i}",
+                "content": chunk,
+                "metadata": {
+                    "file_path": file_path,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                },
+            })
+
+        return result
