@@ -1,6 +1,7 @@
 """Qdrant implementation of the database interface."""
 
 import os
+import json
 from typing import List, Dict, Any, Optional
 
 from qdrant_client import QdrantClient
@@ -33,17 +34,27 @@ class QdrantDatabase(DatabaseInterface):
 
         self.collection_name = None
         self.vector_size = None
+        self._model_name = None
 
-    def initialize(self, collection_name: str, vector_size: int = 384) -> None:
+    def initialize(
+        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+    ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
 
         Args:
             collection_name: Name of the collection to initialize
             vector_size: Dimension of the embedding vectors (default: 384 for all-MiniLM-L6-v2)
+            model_name: Name of the embedding model used to create the vectors
+
+        Returns:
+            None if initialization succeeded with the requested parameters,
+            or the stored model name if there's a dimension mismatch (caller should
+            reload with this model).
         """
         self.collection_name = collection_name
         self.vector_size = vector_size
+        self._model_name = model_name
 
         # Check if collection exists
         collections = self.client.get_collections().collections
@@ -61,21 +72,79 @@ class QdrantDatabase(DatabaseInterface):
             elif isinstance(current_vectors, dict) and "size" in current_vectors:
                 current_size = current_vectors["size"]
 
-            if current_size is not None and current_size != vector_size:
-                print(f"Dimension mismatch: Collection '{collection_name}' has size {current_size}, requested {vector_size}.")
-                print("Recreating collection with new dimension...")
-                self.client.delete_collection(collection_name)
-                collection_exists = False
+            # Get stored model name from collection metadata
+            stored_model = self._get_stored_model_name(collection_name)
 
-        if not collection_exists:
-            # Create collection with cosine distance
-            self.client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=vector_size,
-                    distance=Distance.COSINE,
-                ),
-            )
+            if current_size is not None and current_size != vector_size:
+                if stored_model:
+                    print(f"Dimension mismatch: Collection '{collection_name}' was created with model '{stored_model}' (dimension {current_size}).")
+                    print(f"Loading collection with the original model...")
+                    self._model_name = stored_model
+                    self.vector_size = current_size
+                    return stored_model
+                else:
+                    # No model name stored, we can't recover gracefully
+                    print(f"Dimension mismatch: Collection '{collection_name}' has dimension {current_size}, requested {vector_size}.")
+                    print("No model name stored in collection. Use --reindex to recreate with the new model.")
+                    raise ValueError(
+                        f"Dimension mismatch and no model name stored. "
+                        f"Use --reindex to recreate the collection with the new model."
+                    )
+            else:
+                # Dimensions match, use stored model name if available
+                if stored_model:
+                    self._model_name = stored_model
+
+            return None
+
+        # Create collection with cosine distance
+        self.client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(
+                size=vector_size,
+                distance=Distance.COSINE,
+            ),
+        )
+
+        # Store model name in a metadata file (Qdrant doesn't have collection-level metadata)
+        if model_name:
+            self._store_model_name(collection_name, model_name)
+
+        return None
+
+    def _get_metadata_path(self, collection_name: str) -> str:
+        """Get the path to the metadata file for a collection."""
+        return os.path.join(self.persist_directory, f"{collection_name}_metadata.json")
+
+    def _store_model_name(self, collection_name: str, model_name: str) -> None:
+        """Store model name in a metadata file."""
+        metadata_path = self._get_metadata_path(collection_name)
+        metadata = {"model_name": model_name}
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+
+    def _get_stored_model_name(self, collection_name: str) -> Optional[str]:
+        """Get the stored model name from metadata file."""
+        metadata_path = self._get_metadata_path(collection_name)
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r") as f:
+                    metadata = json.load(f)
+                    return metadata.get("model_name")
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
+
+    def get_model_name(self) -> Optional[str]:
+        """
+        Get the model name stored in the collection metadata.
+
+        Returns:
+            The model name if stored, None otherwise
+        """
+        if self.collection_name:
+            return self._get_stored_model_name(self.collection_name)
+        return self._model_name
 
     def add(
         self,
@@ -199,6 +268,10 @@ class QdrantDatabase(DatabaseInterface):
             self.client.delete_collection(collection_name)
             if self.collection_name == collection_name:
                 self.collection_name = None
+            # Also delete the metadata file
+            metadata_path = self._get_metadata_path(collection_name)
+            if os.path.exists(metadata_path):
+                os.remove(metadata_path)
         except Exception:
             # Collection does not exist or error occurred, which is fine
             pass

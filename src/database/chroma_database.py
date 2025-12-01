@@ -27,13 +27,21 @@ class ChromaDatabase(DatabaseInterface):
         )
         self.collection = None
 
-    def initialize(self, collection_name: str, vector_size: int = 384) -> None:
+    def initialize(
+        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+    ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
 
         Args:
             collection_name: Name of the collection to initialize
             vector_size: Dimension of the embedding vectors (default: 384 for all-MiniLM-L6-v2)
+            model_name: Name of the embedding model used to create the vectors
+
+        Returns:
+            None if initialization succeeded with the requested parameters,
+            or the stored model name if there's a dimension mismatch (caller should
+            reload with this model).
         """
         try:
             self.collection = self.client.get_collection(name=collection_name)
@@ -41,6 +49,7 @@ class ChromaDatabase(DatabaseInterface):
             # Check dimension compatibility
             # 1. Check explicit metadata
             existing_dim = self.collection.metadata.get("dimension")
+            stored_model = self.collection.metadata.get("model_name")
 
             # 2. If no metadata, check existing data
             if existing_dim is None and self.collection.count() > 0:
@@ -49,20 +58,49 @@ class ChromaDatabase(DatabaseInterface):
                     existing_dim = len(peek["embeddings"][0])
 
             if existing_dim is not None and int(existing_dim) != vector_size:
-                print(f"Dimension mismatch: Collection '{collection_name}' has dimension {existing_dim}, requested {vector_size}.")
-                print("Recreating collection with new dimension...")
-                self.client.delete_collection(collection_name)
-                self.collection = None
+                if stored_model:
+                    print(f"Dimension mismatch: Collection '{collection_name}' was created with model '{stored_model}' (dimension {existing_dim}).")
+                    print(f"Loading collection with the original model...")
+                    return stored_model
+                else:
+                    # No model name stored, we can't recover gracefully
+                    print(f"Dimension mismatch: Collection '{collection_name}' has dimension {existing_dim}, requested {vector_size}.")
+                    print("No model name stored in collection. Use --reindex to recreate with the new model.")
+                    raise ValueError(
+                        f"Dimension mismatch and no model name stored. "
+                        f"Use --reindex to recreate the collection with the new model."
+                    )
 
+            return None
+
+        except ValueError:
+            # Re-raise ValueError for dimension mismatch without model name
+            raise
         except Exception:
             # Collection does not exist or other error occurred
             self.collection = None
 
         if self.collection is None:
+            metadata = {"hnsw:space": "cosine", "dimension": vector_size}
+            if model_name:
+                metadata["model_name"] = model_name
             self.collection = self.client.create_collection(
                 name=collection_name,
-                metadata={"hnsw:space": "cosine", "dimension": vector_size},
+                metadata=metadata,
             )
+
+        return None
+
+    def get_model_name(self) -> Optional[str]:
+        """
+        Get the model name stored in the collection metadata.
+
+        Returns:
+            The model name if stored, None otherwise
+        """
+        if self.collection is None:
+            return None
+        return self.collection.metadata.get("model_name")
 
     def add(
         self,

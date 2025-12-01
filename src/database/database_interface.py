@@ -1,20 +1,38 @@
 """Abstract base class for vector database."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
 
 
 class DatabaseInterface(ABC):
     """Abstract interface for vector databases."""
 
     @abstractmethod
-    def initialize(self, collection_name: str, vector_size: int = 384) -> None:
+    def initialize(
+        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+    ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
 
         Args:
             collection_name: Name of the collection to initialize
             vector_size: Dimension of the embedding vectors (default: 384 for all-MiniLM-L6-v2)
+            model_name: Name of the embedding model used to create the vectors
+
+        Returns:
+            None if initialization succeeded with the requested parameters,
+            or the stored model name if there's a dimension mismatch (caller should
+            reload with this model).
+        """
+        pass
+
+    @abstractmethod
+    def get_model_name(self) -> Optional[str]:
+        """
+        Get the model name stored in the collection metadata.
+
+        Returns:
+            The model name if stored, None otherwise
         """
         pass
 

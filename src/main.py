@@ -279,12 +279,16 @@ def main():
     # Initialize database
     db_path = config.get_database_path()
 
+    def create_embedding_model(model_name: str) -> EmbeddingInterface:
+        """Create an embedding model instance based on the model name."""
+        if model_name.startswith("text-embedding-"):
+            return OpenAIEmbedding(model_name)
+        else:
+            return SentenceTransformerEmbedding(model_name)
+
     # Initialize embedding model
     print("\nLoading embedding model...")
-    if config.embedding_model.startswith("text-embedding-"):
-        embedding_model = OpenAIEmbedding(config.embedding_model)
-    else:
-        embedding_model = SentenceTransformerEmbedding(config.embedding_model)
+    embedding_model = create_embedding_model(config.embedding_model)
     print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
 
     if args.database == "chroma":
@@ -292,14 +296,27 @@ def main():
         vector_size = embedding_model.get_embedding_dimension()
         if args.reindex:
             database.delete_collection("codebase")
-        database.initialize("codebase", vector_size=vector_size)
+        stored_model = database.initialize(
+            "codebase", vector_size=vector_size, model_name=config.embedding_model
+        )
+        # If dimension mismatch, reload with the stored model
+        if stored_model and stored_model != config.embedding_model:
+            print(f"\nReloading with model: {stored_model}")
+            embedding_model = create_embedding_model(stored_model)
+            print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
     elif args.database == "qdrant":
         database = QdrantDatabase(persist_directory=db_path)
-        # Get embedding dimension from model
         vector_size = embedding_model.get_embedding_dimension()
         if args.reindex:
             database.delete_collection("codebase")
-        database.initialize("codebase", vector_size=vector_size)
+        stored_model = database.initialize(
+            "codebase", vector_size=vector_size, model_name=config.embedding_model
+        )
+        # If dimension mismatch, reload with the stored model
+        if stored_model and stored_model != config.embedding_model:
+            print(f"\nReloading with model: {stored_model}")
+            embedding_model = create_embedding_model(stored_model)
+            print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
     else:
         print(f"Error: Unsupported database type '{args.database}'")
         sys.exit(1)
