@@ -1,13 +1,7 @@
 """Main CLI entry point for code-rag tool."""
 
-import sys
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
 import argparse
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -244,7 +238,7 @@ def main():
     print("=" * 60)
 
     # Initialize database
-    db_path = str(codebase_path / config.get_database_path())
+    db_path = config.get_database_path()
 
     if args.database == "chroma":
         database = ChromaDatabase(persist_directory=db_path)

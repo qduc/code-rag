@@ -19,7 +19,6 @@ setup(
     install_requires=[
         "chromadb>=1.3.5",
         "qdrant-client>=1.7.0",
-        "pysqlite3-binary>=0.4.6",
         "sentence-transformers>=2.2.0",
         "python-dotenv>=0.21.0",
     ],
