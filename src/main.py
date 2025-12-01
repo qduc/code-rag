@@ -13,6 +13,8 @@ from .embeddings.embedding_interface import EmbeddingInterface
 from .embeddings.openai_embedding import OpenAIEmbedding
 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
 from .processor.file_processor import FileProcessor
+from .reranker.reranker_interface import RerankerInterface
+from .reranker.cross_encoder_reranker import CrossEncoderReranker
 from pathlib import PurePath
 
 
@@ -96,7 +98,9 @@ def process_codebase(
 def query_session(
     database: DatabaseInterface,
     embedding_model: EmbeddingInterface,
+    reranker: Optional[RerankerInterface] = None,
     n_results: int = 5,
+    reranker_multiplier: int = 2,
 ) -> None:
     """
     Start an interactive query session.
@@ -104,7 +108,9 @@ def query_session(
     Args:
         database: Database instance to query
         embedding_model: Embedding model to generate query vectors
+        reranker: Optional reranker for result refinement
         n_results: Number of results to return per query
+        reranker_multiplier: How many results to retrieve before reranking
     """
     print("\n" + "=" * 60)
     print("Query Session Started")
@@ -123,13 +129,46 @@ def query_session(
             # Generate embedding for query
             query_embedding = embedding_model.embed(query)
 
+            # Determine how many results to retrieve from database
+            if reranker is not None:
+                db_n_results = n_results * reranker_multiplier
+            else:
+                db_n_results = n_results
+
             # Search database
-            results = database.query(query_embedding, n_results=n_results)
+            results = database.query(query_embedding, n_results=db_n_results)
 
             # Display results
             if not results["documents"] or not results["documents"][0]:
                 print("\nNo results found.")
                 continue
+
+            # Apply reranking if enabled
+            if reranker is not None:
+                try:
+                    # Extract documents from results
+                    documents = results["documents"][0]
+
+                    # Rerank documents
+                    reranked_indices = reranker.rerank(query, documents, top_k=n_results)
+
+                    # Reorder results based on reranking
+                    reranked_docs = []
+                    reranked_metadata = []
+                    reranked_scores = []
+
+                    for orig_idx, rerank_score in reranked_indices:
+                        reranked_docs.append(results["documents"][0][orig_idx])
+                        reranked_metadata.append(results["metadatas"][0][orig_idx])
+                        reranked_scores.append(rerank_score)
+
+                    # Update results with reranked data
+                    results["documents"][0] = reranked_docs
+                    results["metadatas"][0] = reranked_metadata
+                    results["distances"][0] = reranked_scores
+
+                except Exception as e:
+                    print(f"\nWarning: Reranking failed ({e}), using original results")
 
             print(f"\nFound {len(results['documents'][0])} results:\n")
 
@@ -146,8 +185,11 @@ def query_session(
                 start_line = metadata.get("start_line")
                 end_line = metadata.get("end_line")
 
-                # Calculate similarity score (1 - distance for cosine)
-                similarity = 1 - distance
+                # Calculate similarity score
+                if reranker is not None:
+                    similarity = distance  # Already a relevance score (higher = better)
+                else:
+                    similarity = 1 - distance  # Convert cosine distance to similarity
 
                 print("-" * 60)
                 print(f"Result {i + 1} | Similarity: {similarity:.4f}")
@@ -249,6 +291,26 @@ def main():
         default=5,
     )
 
+    parser.add_argument(
+        "--no-rerank",
+        action="store_true",
+        help="Disable semantic reranking of results",
+    )
+
+    parser.add_argument(
+        "--reranker-model",
+        type=str,
+        help="Cross-encoder model to use for reranking",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--reranker-multiplier",
+        type=int,
+        help="Retrieval multiplier for reranking (default: 2)",
+        default=None,
+    )
+
     args = parser.parse_args()
 
     # Load configuration
@@ -274,6 +336,11 @@ def main():
     print(f"Codebase path: {codebase_path}")
     print(f"Database type: {args.database}")
     print(f"Embedding model: {config.embedding_model}")
+
+    # Reranker info will be added after initialization
+    reranker_enabled_preview = config.is_reranker_enabled() and not args.no_rerank
+    print(f"Reranking: {'enabled' if reranker_enabled_preview else 'disabled'}")
+
     print("=" * 60)
 
     # Initialize database
@@ -290,6 +357,25 @@ def main():
     print("\nLoading embedding model...")
     embedding_model = create_embedding_model(config.embedding_model)
     print(f"Model loaded. Embedding dimension: {embedding_model.get_embedding_dimension()}")
+
+    # Initialize reranker
+    reranker = None
+    reranker_enabled = config.is_reranker_enabled() and not args.no_rerank
+
+    if reranker_enabled:
+        print("\nLoading reranker model...")
+        reranker_model_name = args.reranker_model or config.get_reranker_model()
+        try:
+            reranker = CrossEncoderReranker(reranker_model_name)
+            print(f"Reranker loaded: {reranker_model_name}")
+        except Exception as e:
+            print(f"Warning: Failed to load reranker ({e}), disabling reranking")
+            reranker = None
+    else:
+        print("\nReranking disabled")
+
+    # Get reranker multiplier
+    reranker_multiplier = args.reranker_multiplier or config.get_reranker_multiplier()
 
     if args.database == "chroma":
         database = ChromaDatabase(persist_directory=db_path)
@@ -356,7 +442,13 @@ def main():
         print("Use --reindex to force reprocessing.")
 
     # Start query session
-    query_session(database, embedding_model, n_results=args.results)
+    query_session(
+        database,
+        embedding_model,
+        reranker=reranker,
+        n_results=args.results,
+        reranker_multiplier=reranker_multiplier
+    )
 
     # Cleanup
     database.close()

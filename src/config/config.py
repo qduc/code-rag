@@ -24,6 +24,11 @@ class Config:
         self.chunk_size = int(os.getenv("CODE_RAG_CHUNK_SIZE", "1024"))
         self.batch_size = int(os.getenv("CODE_RAG_BATCH_SIZE", "32"))
 
+        # Reranker configuration
+        self.reranker_enabled = os.getenv("CODE_RAG_RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
+        self.reranker_model = os.getenv("CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+        self.reranker_multiplier = int(os.getenv("CODE_RAG_RERANKER_MULTIPLIER", "2"))
+
     @staticmethod
     def _get_default_database_path() -> str:
         """Get the default database path in the user's cache directory."""
@@ -60,3 +65,15 @@ class Config:
     def get_batch_size(self) -> int:
         """Get the configured batch size."""
         return self.batch_size
+
+    def is_reranker_enabled(self) -> bool:
+        """Get whether reranking is enabled."""
+        return self.reranker_enabled
+
+    def get_reranker_model(self) -> str:
+        """Get the configured reranker model."""
+        return self.reranker_model
+
+    def get_reranker_multiplier(self) -> int:
+        """Get the retrieval multiplier for reranking."""
+        return self.reranker_multiplier
