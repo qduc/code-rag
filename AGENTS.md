@@ -18,11 +18,11 @@
 - **Core Responsibilities**:
   - File discovery via recursive traversal, respecting `.gitignore` and standard ignore patterns (e.g., `node_modules`, `.git`, build directories)
   - File reading with multiple encoding fallbacks to handle diverse source files
-  - File chunking with line-aware splitting to maintain code structure
+  - File chunking using syntax-aware splitting for supported languages, with fallback to line-aware chunking
   - Extensible file type detection (currently supports 40+ programming languages and formats)
-- **Key Design**: Processes files → chunks each → yields chunk with metadata (file path, chunk position, total chunks) so results can be traced back to source
+- **Key Design**: Processes files → chunks each using syntax trees when available → yields chunk with metadata (file path, chunk position, total chunks) so results can be traced back to source
 
-**When modifying**: File type detection and ignore patterns are configurable; chunking strategy is naive/character-based (v1), planned for syntax-aware improvements
+**When modifying**: File type detection and ignore patterns are configurable; syntax-aware chunking uses tree-sitter for supported languages (Python, JavaScript, TypeScript, Go, Rust, Java, C++, C) with automatic fallback to character-based line-aware chunking for unsupported languages
 
 ### 2. **Database Layer**
 - **Architecture**: Abstract interface with multiple pluggable implementations
@@ -133,7 +133,8 @@ Configuration defaults come from environment variables, allowing deployment flex
 
 ## Notes for Contributors
 
-- **Chunking is currently naive**: V1 uses simple character-based splitting. Future versions will add syntax-aware chunking (AST-based, function-level, etc.) to respect code structure.
-- **Graceful degradation in I/O**: File reading errors print a message but the pipeline continues processing other files. Gitignore parsing errors are silently ignored. Consider adding structured logging if this behavior needs improvement.
+- **Syntax-aware chunking**: The processor uses tree-sitter to parse supported languages and chunk by syntax boundaries (functions, classes, etc.). When tree-sitter parsing fails or the language is unsupported, it automatically falls back to character-based line-aware chunking.
+- **Supported syntax languages**: Python, JavaScript, TypeScript, Go, Rust, Java, C++, C. Additional languages can be added by extending `SyntaxChunker.LANGUAGE_PACKAGES` and installing the corresponding tree-sitter binding.
+- **Graceful degradation in I/O**: File reading errors print a message but the pipeline continues processing other files. Gitignore parsing errors are silently ignored. Similarly, syntax chunking errors fall back to basic chunking. Consider adding structured logging if this behavior needs improvement.
 - **Multiple distance metrics**: Different database backends use different vector distance metrics (e.g., cosine vs. L2). Results may differ slightly between backends when querying.
 - **Stateless embeddings**: Embedding models are initialized once and reused for all queries. They maintain no internal state about processed documents.

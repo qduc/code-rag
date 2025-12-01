@@ -21,6 +21,15 @@ setup(
         "qdrant-client>=1.7.0",
         "sentence-transformers>=2.2.0",
         "python-dotenv>=0.21.0",
+        "tree-sitter>=0.22.0",
+        "tree-sitter-python>=0.21.0",
+        "tree-sitter-javascript>=0.21.0",
+        "tree-sitter-typescript>=0.21.0",
+        "tree-sitter-go>=0.21.0",
+        "tree-sitter-rust>=0.21.0",
+        "tree-sitter-java>=0.21.0",
+        "tree-sitter-cpp>=0.21.0",
+        "tree-sitter-c>=0.21.0",
     ],
     entry_points={
         "console_scripts": [

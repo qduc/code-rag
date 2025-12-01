@@ -5,6 +5,8 @@ import fnmatch
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 
+from .syntax_chunker import SyntaxChunker
+
 
 class FileProcessor:
     """Handles file discovery and reading for codebase processing."""
@@ -25,6 +27,25 @@ class FileProcessor:
         ".dockerfile", ".makefile", ".gradle", ".cmake",
     }
 
+    # Mapping from extension to tree-sitter language name
+    EXTENSION_TO_LANGUAGE = {
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "tsx",
+        ".go": "go",
+        ".rs": "rust",
+        ".java": "java",
+        ".cpp": "cpp",
+        ".cc": "cpp",
+        ".c": "c",
+        ".h": "c",
+        ".rb": "ruby",
+        ".php": "php",
+        ".cs": "c_sharp",
+    }
+
     def __init__(self, ignore_patterns: List[str] = None):
         """
         Initialize the file processor.
@@ -34,6 +55,7 @@ class FileProcessor:
         """
         self.ignore_patterns = ignore_patterns or self._default_ignore_patterns()
         self._gitignore_patterns: Set[str] = set()
+        self.syntax_chunker = SyntaxChunker()
 
     def _default_ignore_patterns(self) -> List[str]:
         """Return default patterns to ignore."""
@@ -287,7 +309,19 @@ class FileProcessor:
         if content is None:
             return []
 
-        chunks = self.chunk_file(content, chunk_size)
+        # Determine language and try syntax chunking
+        ext = Path(file_path).suffix.lower()
+        language = self.EXTENSION_TO_LANGUAGE.get(ext)
+
+        chunks = []
+        if language:
+            # Update chunk size for this request
+            self.syntax_chunker.chunk_size = chunk_size
+            chunks = self.syntax_chunker.chunk(content, language)
+
+        # Fallback to basic chunking if syntax chunking failed or not supported
+        if not chunks:
+            chunks = self.chunk_file(content, chunk_size)
 
         result = []
         for i, chunk in enumerate(chunks):
