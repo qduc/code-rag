@@ -1,7 +1,13 @@
 """Main CLI entry point for code-rag tool."""
 
-import argparse
 import sys
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
+import argparse
 from pathlib import Path
 from typing import Optional
 
@@ -179,8 +185,8 @@ def main():
         "--database",
         type=str,
         choices=["chroma", "qdrant"],
-        help="Type of vector database to use (default: qdrant)",
-        default="qdrant",
+        help="Type of vector database to use (default: chroma)",
+        default="chroma",
     )
 
     parser.add_argument(

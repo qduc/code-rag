@@ -1,7 +1,7 @@
 # Vector Database
 chromadb
-sqlite3>=3.35.0
-# qdrant-client>=1.7.0
+qdrant-client>=1.7.0
+pysqlite3-binary>=0.4.6
 
 # Embedding Models
 sentence-transformers
