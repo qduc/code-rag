@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 from .config.config import Config
 from .api import CodeRAGAPI
@@ -16,6 +17,7 @@ from .reranker.reranker_interface import RerankerInterface
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
 from pathlib import PurePath
 
+load_dotenv()  # Load environment variables from .env file
 
 def process_codebase(
     root_path: str,

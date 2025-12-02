@@ -2,7 +2,15 @@
 
 from typing import List, Dict, Optional, Tuple, Set
 import importlib
+import logging
+import os
 from tree_sitter import Language, Parser, Node
+
+# Configure logging - get level from environment variable, default to INFO
+log_level = os.getenv('CODE_RAG_LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO),
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 # Node types that represent file-level header items (imports, constants, type definitions)
@@ -324,12 +332,18 @@ class SyntaxChunker:
 
     def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[Dict[str, any]]:
         """Group segments into chunks respecting chunk_size, with byte offset tracking and overlap."""
+        logger.debug(f"_group_segments: Processing {len(segments)} segments, content length: {len(content)}")
         chunks = []
         current_chunk_segments = []
         current_chunk_len = 0
         prev_chunk_end_text = ""  # For overlap support
+        iteration_count = 0
 
         for start, end in segments:
+            iteration_count += 1
+            if iteration_count % 100 == 0:
+                logger.debug(f"_group_segments: iteration {iteration_count}, chunks created: {len(chunks)}")
+            logger.debug(f"  Processing segment [{start}:{end}], length: {end-start}")
             segment_len = end - start
 
             # If adding this segment exceeds chunk size
@@ -392,8 +406,11 @@ class SyntaxChunker:
         Returns:
             List of chunk dictionaries
         """
+        logger.debug(f"_split_large_segment: Splitting segment [{start}:{end}], length: {end-start}")
+        logger.debug(f"  chunk_size={self.chunk_size}, overlap={self.overlap}")
         segment_text = content[start:end]
         chunks = []
+        iteration_count = 0
 
         # Try to extract signature + docstring from the segment
         signature_end = self._find_signature_end(segment_text)
@@ -410,7 +427,20 @@ class SyntaxChunker:
         body_start = signature_end
         current_pos = body_start
 
+        logger.debug(f"  Starting split loop: body_start={body_start}, segment_text length={len(segment_text)}, effective_chunk_size={effective_chunk_size}")
+
         while current_pos < len(segment_text):
+            iteration_count += 1
+            if iteration_count > 1000:
+                logger.error(f"INFINITE LOOP DETECTED in _split_large_segment after 1000 iterations!")
+                logger.error(f"  current_pos={current_pos}, len(segment_text)={len(segment_text)}")
+                logger.error(f"  effective_chunk_size={effective_chunk_size}, overlap={self.overlap}")
+                logger.error(f"  chunks created so far: {len(chunks)}")
+                break
+
+            if iteration_count % 10 == 0:
+                logger.debug(f"  Split iteration {iteration_count}: current_pos={current_pos}/{len(segment_text)}, chunks={len(chunks)}")
+
             chunk_end = min(current_pos + effective_chunk_size, len(segment_text))
 
             # Try to find a good break point (newline)
@@ -443,8 +473,18 @@ class SyntaxChunker:
             })
 
             # Move to next chunk, with overlap
+            old_pos = current_pos
             current_pos = chunk_end - self.overlap if self.overlap > 0 else chunk_end
+            logger.debug(f"  Moving position: {old_pos} -> {current_pos} (chunk_end={chunk_end}, overlap={self.overlap})")
 
+            # Safety check: ensure we're making progress
+            if current_pos <= old_pos:
+                logger.error(f"POSITION NOT ADVANCING: old_pos={old_pos}, new current_pos={current_pos}")
+                logger.error(f"  This will cause infinite loop! chunk_end={chunk_end}, overlap={self.overlap}")
+                # Force advancement to prevent infinite loop
+                current_pos = old_pos + 1
+
+        logger.debug(f"_split_large_segment: Completed, created {len(chunks)} chunks")
         return chunks
 
     def _find_signature_end(self, text: str) -> int:
