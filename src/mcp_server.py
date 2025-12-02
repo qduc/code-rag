@@ -118,21 +118,19 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_codebase",
             description=(
-                "Semantic code search using natural language queries. Auto-indexes on first use.\n"
+                "Semantic code search using natural language queries.\n"
                 "\n"
                 "Best for exploratory searches when you don't know exact file names or method names.\n"
-                "Returns: file:lines | function() | ClassName (score) + code snippet.\n"
                 "\n"
                 "Ideal queries:\n"
-                "  • 'reasoning tokens handling' → finds all related implementations\n"
-                "  • 'authentication logic' → locates auth files and patterns\n"
-                "  • 'database setup' → discovers where DB is configured\n"
-                "  • 'error handling for uploads' → finds relevant error handling\n"
+                "  • 'where are API keys validated' → finds validation logic regardless of variable names\n"
+                "  • 'code that converts markdown to HTML' → finds converters even if not named 'markdown'\n"
+                "  • 'retry logic for failed requests' → finds retry patterns across different implementations\n"
+                "  • 'caching strategy for expensive operations' → discovers cache implementations by behavior\n"
                 "\n"
-                "Results include function/class names when available, reducing need for follow-up reads.\n"
-                "Use expand_context=true for fuller code context around matches.\n"
-                "\n"
-                "Workflow: Use this for discovery → Read tool for full file context when needed."
+                "Returns: file:lines | function() | ClassName (score) + code snippet.\n"
+                "Scoring: Cross-encoder logits (unbounded, typically -10 to +10). Higher = more relevant.\n"
+                "Compare scores relatively within each query; magnitude matters more than sign."
             ),
             inputSchema={
                 "type": "object",
