@@ -21,13 +21,15 @@ class Config:
         else:
             self.database_path = self._get_default_database_path()
 
-        self.chunk_size = int(os.getenv("CODE_RAG_CHUNK_SIZE", "1024"))
-        self.batch_size = int(os.getenv("CODE_RAG_BATCH_SIZE", "32"))
+        self.chunk_size = self._get_int_env("CODE_RAG_CHUNK_SIZE", 1024)
+        self.batch_size = max(1, self._get_int_env("CODE_RAG_BATCH_SIZE", 32))
 
         # Chunking configuration
-        self.overlap_size = int(os.getenv("CODE_RAG_OVERLAP_SIZE", "100"))
+        self.overlap_size = self._get_int_env("CODE_RAG_OVERLAP_SIZE", 100)
         self.include_file_header = os.getenv("CODE_RAG_INCLUDE_FILE_HEADER", "true").lower() in ("true", "1", "yes")
         self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in ("true", "1", "yes")
+
+        self._sanitize_chunk_defaults()
 
         # Reranker configuration
         self.reranker_enabled = os.getenv("CODE_RAG_RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -94,3 +96,22 @@ class Config:
     def should_exclude_tests(self) -> bool:
         """Get whether to exclude test files from indexing."""
         return self.exclude_tests
+
+    def _get_int_env(self, name: str, default: int) -> int:
+        """Parse integer env vars with a safe fallback."""
+        value = os.getenv(name)
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except ValueError:
+            return default
+
+    def _sanitize_chunk_defaults(self) -> None:
+        """Ensure chunk defaults form a sane pair when env vars are absent or invalid."""
+        if self.chunk_size < 1:
+            self.chunk_size = 1
+        if self.overlap_size < 0:
+            self.overlap_size = 0
+        if self.overlap_size >= self.chunk_size:
+            self.overlap_size = max(0, self.chunk_size - 1)

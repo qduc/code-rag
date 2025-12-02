@@ -3,7 +3,7 @@
 import os
 import fnmatch
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 from .syntax_chunker import SyntaxChunker
 
@@ -111,7 +111,7 @@ class FileProcessor:
         """
         self.ignore_patterns = ignore_patterns or self._default_ignore_patterns()
         self.exclude_tests = exclude_tests
-        self.overlap_size = overlap_size
+        self.overlap_size = max(0, overlap_size)
         self.include_file_header = include_file_header
         self._gitignore_patterns: Set[str] = set()
         self.syntax_chunker = SyntaxChunker(
@@ -351,8 +351,15 @@ class FileProcessor:
         Returns:
             List of chunks
         """
+        if chunk_size is None or chunk_size <= 0:
+            chunk_size = 1
+
         if overlap is None:
             overlap = self.overlap_size
+
+        overlap = max(0, overlap)
+        if overlap >= chunk_size:
+            overlap = chunk_size - 1 if chunk_size > 0 else 0
 
         if not content:
             return []
@@ -390,6 +397,14 @@ class FileProcessor:
 
         return chunks
 
+    def _sanitize_chunk_parameters(self, chunk_size: Optional[int]) -> Tuple[int, int]:
+        """Ensure chunk size/overlap combination always makes forward progress."""
+        base_size = chunk_size if chunk_size and chunk_size > 0 else self.syntax_chunker.chunk_size or 1
+        safe_chunk_size = max(1, int(base_size))
+        max_overlap = safe_chunk_size - 1 if safe_chunk_size > 1 else 0
+        safe_overlap = min(max(0, self.overlap_size), max_overlap)
+        return safe_chunk_size, safe_overlap
+
     def process_file(
         self,
         file_path: str,
@@ -413,15 +428,18 @@ class FileProcessor:
         ext = Path(file_path).suffix.lower()
         language = self.EXTENSION_TO_LANGUAGE.get(ext)
 
+        safe_chunk_size, safe_overlap = self._sanitize_chunk_parameters(chunk_size)
+
         chunks = []
         if language:
-            # Update chunk size for this request
-            self.syntax_chunker.chunk_size = chunk_size
+            # Update chunk size/overlap for this request
+            self.syntax_chunker.chunk_size = safe_chunk_size
+            self.syntax_chunker.overlap = safe_overlap
             chunks = self.syntax_chunker.chunk(content, language)
 
         # Fallback to basic chunking if syntax chunking failed or not supported
         if not chunks:
-            chunks = self.chunk_file(content, chunk_size, self.overlap_size)
+            chunks = self.chunk_file(content, safe_chunk_size, safe_overlap)
 
         result = []
         total_chunks = len(chunks)

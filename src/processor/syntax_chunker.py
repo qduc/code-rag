@@ -118,7 +118,6 @@ class SyntaxChunker:
         self.overlap = overlap
         self.include_file_header = include_file_header
         self._parsers = {}
-        self._current_tree = None  # Store current parse tree for metadata extraction
         self._file_header: Optional[str] = None  # Cache extracted file header
         self._file_header_end_byte: int = 0  # End byte of file header
 
@@ -157,13 +156,14 @@ class SyntaxChunker:
             List of dictionaries with 'text', 'start_byte', 'end_byte', and optional
             'function_name', 'class_name', 'symbol_type', 'file_header', 'prev_id', 'next_id' keys
         """
+        self._ensure_valid_parameters()
+
         parser = self._get_parser(language_name)
         if not parser:
             return []
 
         try:
             tree = parser.parse(bytes(content, "utf8"))
-            self._current_tree = tree  # Store for metadata extraction
 
             # Extract file header (imports, constants, etc.) if enabled
             if self.include_file_header:
@@ -182,6 +182,15 @@ class SyntaxChunker:
         except Exception as e:
             print(f"Error parsing content for syntax chunking: {e}")
             return []
+
+    def _ensure_valid_parameters(self) -> None:
+        """Clamp chunker settings to safe values to avoid infinite loops."""
+        if self.chunk_size < 1:
+            self.chunk_size = 1
+        if self.overlap < 0:
+            self.overlap = 0
+        if self.overlap >= self.chunk_size:
+            self.overlap = self.chunk_size - 1
 
     def _extract_file_header(self, root_node: Node, content: str) -> Tuple[Optional[str], int]:
         """
