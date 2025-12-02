@@ -18,7 +18,10 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
             model_name: Name of the model to use (default: all-MiniLM-L6-v2)
         """
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        self.model = SentenceTransformer(
+            model_name,
+            trust_remote_code=True
+        )
 
     def embed(self, text: str) -> List[float]:
         """

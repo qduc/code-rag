@@ -1,15 +1,13 @@
 """Syntax-aware chunking using Tree-sitter."""
 
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple
 import importlib
 import logging
 import os
 from tree_sitter import Language, Parser, Node
+from .. import logger
 
-# Configure logging - get level from environment variable, default to INFO
-log_level = os.getenv('CODE_RAG_LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=getattr(logging, log_level, logging.INFO),
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Get logger for this module
 logger = logging.getLogger(__name__)
 
 
@@ -113,17 +111,15 @@ class SyntaxChunker:
         "c": ("tree_sitter_c", "language"),
     }
 
-    def __init__(self, chunk_size: int = 1024, overlap: int = 100, include_file_header: bool = True):
+    def __init__(self, chunk_size: int = 1024, include_file_header: bool = True):
         """
         Initialize the syntax chunker.
 
         Args:
             chunk_size: Target size of each chunk in characters
-            overlap: Number of characters to overlap between chunks
             include_file_header: Whether to extract and include file headers (imports, etc.)
         """
         self.chunk_size = chunk_size
-        self.overlap = overlap
         self.include_file_header = include_file_header
         self._parsers = {}
         self._file_header: Optional[str] = None  # Cache extracted file header
@@ -195,10 +191,6 @@ class SyntaxChunker:
         """Clamp chunker settings to safe values to avoid infinite loops."""
         if self.chunk_size < 1:
             self.chunk_size = 1
-        if self.overlap < 0:
-            self.overlap = 0
-        if self.overlap >= self.chunk_size:
-            self.overlap = self.chunk_size - 1
 
     def _extract_file_header(self, root_node: Node, content: str) -> Tuple[Optional[str], int]:
         """
@@ -331,12 +323,11 @@ class SyntaxChunker:
         return segments
 
     def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[Dict[str, any]]:
-        """Group segments into chunks respecting chunk_size, with byte offset tracking and overlap."""
+        """Group segments into chunks respecting chunk_size while tracking byte offsets."""
         logger.debug(f"_group_segments: Processing {len(segments)} segments, content length: {len(content)}")
         chunks = []
         current_chunk_segments = []
         current_chunk_len = 0
-        prev_chunk_end_text = ""  # For overlap support
         iteration_count = 0
 
         for start, end in segments:
@@ -350,14 +341,8 @@ class SyntaxChunker:
             if current_chunk_len + segment_len > self.chunk_size:
                 # If we have accumulated content, flush it
                 if current_chunk_segments:
-                    chunk_data = self._build_chunk_data(current_chunk_segments, content, prev_chunk_end_text)
+                    chunk_data = self._build_chunk_data(current_chunk_segments, content)
                     chunks.append(chunk_data)
-
-                    # Store overlap text from end of this chunk for next chunk
-                    chunk_end = current_chunk_segments[-1][1]
-                    chunk_start = current_chunk_segments[0][0]
-                    overlap_start = max(chunk_start, chunk_end - self.overlap)
-                    prev_chunk_end_text = content[overlap_start:chunk_end]
 
                     current_chunk_segments = []
                     current_chunk_len = 0
@@ -365,14 +350,8 @@ class SyntaxChunker:
                 # Now handle the current segment
                 if segment_len > self.chunk_size:
                     # This is a huge segment - try to extract signature for preservation
-                    sub_chunks = self._split_large_segment(start, end, content, prev_chunk_end_text)
+                    sub_chunks = self._split_large_segment(start, end, content)
                     chunks.extend(sub_chunks)
-
-                    # Update overlap text from last sub-chunk
-                    if sub_chunks:
-                        last_chunk_end = sub_chunks[-1]["end_byte"]
-                        overlap_start = max(start, last_chunk_end - self.overlap)
-                        prev_chunk_end_text = content[overlap_start:last_chunk_end]
                 else:
                     # Start a new chunk with this segment
                     current_chunk_segments.append((start, end))
@@ -384,13 +363,13 @@ class SyntaxChunker:
 
         # Flush remaining
         if current_chunk_segments:
-            chunk_data = self._build_chunk_data(current_chunk_segments, content, prev_chunk_end_text)
+            chunk_data = self._build_chunk_data(current_chunk_segments, content)
             chunks.append(chunk_data)
 
         return chunks
 
     def _split_large_segment(
-        self, start: int, end: int, content: str, overlap_text: str
+        self, start: int, end: int, content: str
     ) -> List[Dict[str, any]]:
         """
         Split a large segment (e.g., huge function) into smaller chunks.
@@ -401,13 +380,11 @@ class SyntaxChunker:
             start: Start byte of the segment
             end: End byte of the segment
             content: Full source content
-            overlap_text: Text from previous chunk for overlap
-
         Returns:
             List of chunk dictionaries
         """
         logger.debug(f"_split_large_segment: Splitting segment [{start}:{end}], length: {end-start}")
-        logger.debug(f"  chunk_size={self.chunk_size}, overlap={self.overlap}")
+        logger.debug(f"  chunk_size={self.chunk_size}")
         segment_text = content[start:end]
         chunks = []
         iteration_count = 0
@@ -417,10 +394,10 @@ class SyntaxChunker:
         signature = segment_text[:signature_end] if signature_end > 0 else ""
 
         # Calculate effective chunk size (accounting for signature preservation)
-        effective_chunk_size = self.chunk_size - len(signature) - len(overlap_text)
+        effective_chunk_size = self.chunk_size - len(signature)
         if effective_chunk_size < 200:
             # If too little space, just use basic splitting without signature
-            effective_chunk_size = self.chunk_size - len(overlap_text)
+            effective_chunk_size = self.chunk_size
             signature = ""
 
         # Split the body into chunks
@@ -434,7 +411,7 @@ class SyntaxChunker:
             if iteration_count > 1000:
                 logger.error(f"INFINITE LOOP DETECTED in _split_large_segment after 1000 iterations!")
                 logger.error(f"  current_pos={current_pos}, len(segment_text)={len(segment_text)}")
-                logger.error(f"  effective_chunk_size={effective_chunk_size}, overlap={self.overlap}")
+                logger.error(f"  effective_chunk_size={effective_chunk_size}")
                 logger.error(f"  chunks created so far: {len(chunks)}")
                 break
 
@@ -451,8 +428,6 @@ class SyntaxChunker:
 
             # Build chunk text with preserved context
             chunk_parts = []
-            if overlap_text and not chunks:  # Only first sub-chunk gets previous overlap
-                pass  # Overlap handled in text assembly below
             if signature and chunks:  # Subsequent chunks get signature prepended
                 chunk_parts.append(f"# [continued from above]\n{signature}\n    # ...\n")
 
@@ -472,17 +447,10 @@ class SyntaxChunker:
                 "has_signature_context": bool(signature) and len(chunks) > 0,
             })
 
-            # Move to next chunk, with overlap
+            # Move to next chunk
             old_pos = current_pos
-            current_pos = chunk_end - self.overlap if self.overlap > 0 else chunk_end
-            logger.debug(f"  Moving position: {old_pos} -> {current_pos} (chunk_end={chunk_end}, overlap={self.overlap})")
-
-            # Safety check: ensure we're making progress
-            if current_pos <= old_pos:
-                logger.error(f"POSITION NOT ADVANCING: old_pos={old_pos}, new current_pos={current_pos}")
-                logger.error(f"  This will cause infinite loop! chunk_end={chunk_end}, overlap={self.overlap}")
-                # Force advancement to prevent infinite loop
-                current_pos = old_pos + 1
+            current_pos = chunk_end
+            logger.debug(f"  Moving position: {old_pos} -> {current_pos} (chunk_end={chunk_end})")
 
         logger.debug(f"_split_large_segment: Completed, created {len(chunks)} chunks")
         return chunks
@@ -560,7 +528,7 @@ class SyntaxChunker:
         return len(result) + 1  # +1 for the newline
 
     def _build_chunk_data(
-        self, segments: List[Tuple[int, int]], content: str, overlap_text: str = ""
+        self, segments: List[Tuple[int, int]], content: str
     ) -> Dict[str, any]:
         """
         Reconstruct text from segments and return with byte offsets.
@@ -568,7 +536,6 @@ class SyntaxChunker:
         Args:
             segments: List of (start, end) byte positions
             content: Full source content
-            overlap_text: Optional overlap text from previous chunk
 
         Returns:
             Dictionary with text, start_byte, end_byte
@@ -587,17 +554,10 @@ class SyntaxChunker:
         end = segments[-1][1]
         chunk_text = content[start:end]
 
-        # Prepend overlap if provided (for context continuity)
-        # Note: We don't adjust start_byte since overlap is from previous chunk
-        if overlap_text:
-            # Add a marker to indicate overlapped content
-            chunk_text = chunk_text  # Overlap stored in metadata, not prepended to text
-
         return {
             "text": chunk_text,
             "start_byte": start,
             "end_byte": end,
-            "overlap_chars": len(overlap_text) if overlap_text else 0,
         }
 
     def _enrich_chunks_with_metadata(self, chunks: List[Dict[str, any]], root_node: Node, content: str) -> List[Dict[str, any]]:

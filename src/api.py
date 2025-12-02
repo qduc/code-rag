@@ -202,7 +202,6 @@ class CodeRAGAPI:
 
         processor = FileProcessor(
             exclude_tests=self.config.should_exclude_tests(),
-            overlap_size=self.config.get_overlap_size(),
             include_file_header=self.config.should_include_file_header(),
         )
 

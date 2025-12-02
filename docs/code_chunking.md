@@ -1,51 +1,36 @@
 Do I need to keep overlap when I chunk code by syntax for RAG?
 
-Short answer: yes — but only *small, targeted* overlap (or better: include the right context pieces) rather than large blind overlap. Here’s a practical guide you can apply immediately.
+Short answer: **no**. We removed chunk overlap from Code-RAG because it added complexity, triggered infinite-loop edge cases, and duplicated a lot of text without reliably improving recall. Instead, we lean on three mechanisms that preserve context without copying bytes: syntax-aware chunking, file headers, and adjacency metadata.
 
-### Why overlap helps (and when it’s needed)
+### Why we dropped overlap
 
-* Code meaning often crosses chunk boundaries (calls, variable definitions, imports, docstrings). Without some context you get broken embeddings and retrieval that misses the link.
-* But large blind overlap wastes storage, increases noise in retrieval, and can make embeddings less discriminative.
+- Overlap made `_split_large_segment` prone to "position not advancing" failures whenever the remainder of a chunk was shorter than the overlap size.
+- Duplicated text increased storage costs and made embedding vectors less discriminative (multiple nearly identical chunks) while still failing on long-range references.
+- We already track `prev_id`/`next_id`, line numbers, and file headers, which are cheaper and easier to reason about than hidden overlap heuristics.
 
-### Practical rules (quick)
+### How we preserve context now
 
-1. **Chunk by semantic units first** — functions, methods, classes, small modules. Prefer AST/tree-sitter or language parser over fixed-line splits.
-2. **Always keep the signature + docstring with the chunk.** If a function is split, duplicate the signature & docstring in both pieces.
-3. **Keep a small overlap:** ~**3–8 lines** (or ~**50–150 tokens**) around split boundaries is a good default. That’s enough to preserve context without huge duplication.
-4. **Include key file-level context** (imports, constants, type definitions): either *prepend* them to each chunk that needs them, or index a separate “file header” chunk and fetch it alongside.
-5. **Store adjacency metadata** (file path, start_line, end_line, prev_id/next_id). When a query returns a chunk, fetch its neighbor(s) instead of relying solely on overlap.
-6. **Hybrid indexing:** keep both chunk-level embeddings and one embedding for the whole file (or module). Use coarse retrieval on file-level then fine retrieval on chunks.
-7. **If functions are huge:** split by logical sub-blocks but always include the function signature and the immediate upstream variable/constant definitions in each sub-chunk.
-8. **Avoid duplicating large comments/tests/libraries** — either exclude obvious non-needed boilerplate or keep a single special chunk for those.
+1. **Semantic chunks first.** Tree-sitter splits by functions, classes, and other definitions so most references stay within a single chunk.
+2. **Include headers when needed.** Imports, constants, and file-level comments can be stored once as a dedicated "file header" chunk and fetched alongside results.
+3. **Use adjacency metadata.** When a query returns chunk _i_, fetch `i-1` and `i+1` via `prev_id`/`next_id` rather than relying on overlapped text.
+4. **Preserve signatures on split functions.** `_split_large_segment` automatically prepends the function signature/docstring to continuation chunks so follow-up chunks still have the necessary context.
+5. **Hybrid retrieval.** Combine chunk-level vectors with optional whole-file vectors or reranking to reassemble broader answers.
 
-### Retrieval & assembly tips
+### Retrieval tip
 
-* When answering, retrieve top-k chunks (k=3–8 depending on your context window) and also fetch neighbors via adjacency — this often beats large overlap.
-* When building prompts, include chunk provenance (file + line numbers) and a short file summary you maintain when indexing (helps the model stitch pieces).
+When building a response, request the top‑k chunks (k≈3–8) and include their adjacent chunks if the answer spans boundaries. This gives you continuity without storing duplicate content.
 
-### Short example (Python)
-
-Chunk A (end):
+### Example
 
 ```py
 def compute(x):
     """Compute something useful."""
-    a = helper(x)
-    return a * 2
-# ----- overlap: include next function signature or 3 lines -----
+    return helper(x) * 2
+
+def helper(x):
+    return x + 1
 ```
 
-Chunk B (start, duplicated signature/context if split):
+If `compute` exceeded the chunk size, the continuation chunk would start with `# [continued from above]` plus the `def compute` signature stub so the downstream model still knows which symbol it is looking at. No explicit overlap is required.
 
-```py
-def compute(x):            # duplicated signature or at least 'def compute' + docstring
-    """Compute something useful."""
-    a = helper(x)
-    # continuation...
-```
-
-Alternatively, put `from utils import helper` into a small `file-header` chunk and fetch it with either chunk.
-
----
-
-In short: prefer semantic chunking + targeted small overlap (or header inclusion) + adjacency links and hybrid file/chunk index. That gives the best accuracy/cost tradeoff for RAG on code.
+Bottom line: Code-RAG keeps chunks lean, avoids duplicated overlap, and relies on structural metadata to stitch context back together.

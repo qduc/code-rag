@@ -25,7 +25,6 @@ class Config:
         self.batch_size = max(1, self._get_int_env("CODE_RAG_BATCH_SIZE", 32))
 
         # Chunking configuration
-        self.overlap_size = self._get_int_env("CODE_RAG_OVERLAP_SIZE", 100)
         self.include_file_header = os.getenv("CODE_RAG_INCLUDE_FILE_HEADER", "true").lower() in ("true", "1", "yes")
         self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in ("true", "1", "yes")
 
@@ -35,6 +34,9 @@ class Config:
         self.reranker_enabled = os.getenv("CODE_RAG_RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
         self.reranker_model = os.getenv("CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
         self.reranker_multiplier = int(os.getenv("CODE_RAG_RERANKER_MULTIPLIER", "2"))
+
+        # Logging configuration
+        self.log_level = os.getenv("CODE_RAG_LOG_LEVEL", "INFO").upper()
 
     @staticmethod
     def _get_default_database_path() -> str:
@@ -85,10 +87,6 @@ class Config:
         """Get the retrieval multiplier for reranking."""
         return self.reranker_multiplier
 
-    def get_overlap_size(self) -> int:
-        """Get the configured overlap size for chunks."""
-        return self.overlap_size
-
     def should_include_file_header(self) -> bool:
         """Get whether to include file headers in chunks."""
         return self.include_file_header
@@ -96,6 +94,10 @@ class Config:
     def should_exclude_tests(self) -> bool:
         """Get whether to exclude test files from indexing."""
         return self.exclude_tests
+
+    def get_log_level(self) -> str:
+        """Get the configured log level."""
+        return self.log_level
 
     def _get_int_env(self, name: str, default: int) -> int:
         """Parse integer env vars with a safe fallback."""
@@ -111,7 +113,3 @@ class Config:
         """Ensure chunk defaults form a sane pair when env vars are absent or invalid."""
         if self.chunk_size < 1:
             self.chunk_size = 1
-        if self.overlap_size < 0:
-            self.overlap_size = 0
-        if self.overlap_size >= self.chunk_size:
-            self.overlap_size = max(0, self.chunk_size - 1)

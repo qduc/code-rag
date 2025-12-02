@@ -20,6 +20,7 @@ setup(
         "chromadb>=1.3.5",
         "qdrant-client>=1.7.0",
         "sentence-transformers>=2.2.0",
+        "einops>=0.6.0",
         "openai>=1.50.0",
         "python-dotenv>=0.21.0",
         "mcp>=0.9.0",
