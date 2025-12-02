@@ -153,6 +153,16 @@ async def list_tools() -> list[Tool]:
                         "description": "If true, include surrounding code for more context (slightly slower)",
                         "default": False,
                     },
+                    "file_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by file extensions (e.g. ['.py', '.md']). Case-insensitive.",
+                    },
+                    "include_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Only include files whose paths contain these strings (e.g. ['src/api', 'tests/']).",
+                    },
                 },
                 "required": ["codebase_path", "query"],
             },
@@ -185,6 +195,8 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             query = arguments.get("query")
             max_results = min(arguments.get("max_results", 5), 20)  # Cap at 20
             expand_context = arguments.get("expand_context", False)
+            file_types = arguments.get("file_types")
+            include_paths = arguments.get("include_paths")
 
             if not codebase_path:
                 return [TextContent(type="text", text="Error: 'codebase_path' is required")]
@@ -212,6 +224,8 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
                 query,
                 n_results=max_results,
                 expand_context=expand_context,
+                file_types=file_types,
+                include_paths=include_paths,
             )
 
             # Format and return results

@@ -261,6 +261,8 @@ class CodeRAGAPI:
         n_results: int = 5,
         collection_name: Optional[str] = None,
         expand_context: bool = False,
+        file_types: Optional[List[str]] = None,
+        include_paths: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search over the indexed codebase.
@@ -270,6 +272,8 @@ class CodeRAGAPI:
             n_results: Number of results to return
             collection_name: Name of the collection to search (uses active collection if None)
             expand_context: If True, fetch adjacent chunks to provide more context
+            file_types: Optional list of file extensions to filter by (e.g. ['.py', '.md'])
+            include_paths: Optional list of path substrings to include (e.g. ['src/', 'tests/'])
 
         Returns:
             List of search results, each containing:
@@ -294,16 +298,52 @@ class CodeRAGAPI:
         query_embedding = self.embedding_model.embed(query)
 
         # Determine how many results to retrieve from database
+        # If filtering is enabled, fetch more results to ensure we have enough after filtering
+        base_n_results = n_results
+        if file_types or include_paths:
+            # Fetch significantly more results to account for filtering
+            base_n_results = max(n_results * 10, 50)
+
         if self.reranker is not None:
-            db_n_results = n_results * self.reranker_multiplier
+            db_n_results = base_n_results * self.reranker_multiplier
         else:
-            db_n_results = n_results
+            db_n_results = base_n_results
 
         # Search database
         results = self.database.query(query_embedding, n_results=db_n_results)
 
         if not results["documents"] or not results["documents"][0]:
             return []
+
+        # Apply application-level filtering (file types, paths)
+        if file_types or include_paths:
+            docs = results["documents"][0]
+            metadatas = results["metadatas"][0]
+            distances = results["distances"][0]
+
+            filtered_indices = []
+            for i, metadata in enumerate(metadatas):
+                file_path = metadata.get("file_path", "")
+
+                # Filter by file types
+                if file_types:
+                    if not any(file_path.lower().endswith(ext.lower()) for ext in file_types):
+                        continue
+
+                # Filter by include paths
+                if include_paths:
+                    if not any(path_part in file_path for path_part in include_paths):
+                        continue
+
+                filtered_indices.append(i)
+
+            # Apply filter
+            results["documents"][0] = [docs[i] for i in filtered_indices]
+            results["metadatas"][0] = [metadatas[i] for i in filtered_indices]
+            results["distances"][0] = [distances[i] for i in filtered_indices]
+
+            if not results["documents"][0]:
+                return []
 
         # Apply reranking if enabled
         if self.reranker is not None:
