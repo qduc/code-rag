@@ -180,7 +180,7 @@ class TestFormatSearchResults:
     def test_format_empty_results(self):
         """Test formatting empty search results."""
         result = format_search_results([])
-        assert "No results found" in result
+        assert "No results" in result
 
     def test_format_single_result(self):
         """Test formatting a single search result."""
@@ -195,11 +195,11 @@ class TestFormatSearchResults:
         ]
         output = format_search_results(results)
 
-        assert "Found 1 relevant code locations" in output
-        assert "src/auth.py" in output
-        assert "Lines 1-10" in output
-        assert "95.0%" in output
+        # New compact format: file:lines (score)
+        assert "src/auth.py:1-10" in output
+        assert "0.95" in output
         assert "def login" in output
+        assert "---" in output
 
     def test_format_multiple_results(self):
         """Test formatting multiple search results."""
@@ -221,11 +221,11 @@ class TestFormatSearchResults:
         ]
         output = format_search_results(results)
 
-        assert "Found 2 relevant code locations" in output
-        assert "src/auth.py" in output
-        assert "src/database.py" in output
-        assert "95.0%" in output
-        assert "87.0%" in output
+        # New compact format
+        assert "src/auth.py:1-10" in output
+        assert "src/database.py:20-30" in output
+        assert "0.95" in output
+        assert "0.87" in output
 
     def test_format_result_without_line_numbers(self):
         """Test formatting results without line number information."""
@@ -239,12 +239,12 @@ class TestFormatSearchResults:
         output = format_search_results(results)
 
         assert "src/auth.py" in output
-        assert "95.0%" in output
-        # Should not have "Lines" if start_line/end_line are missing
-        assert "Lines" not in output
+        assert "0.95" in output
+        # Should not have line numbers if start_line/end_line are missing
+        assert ":1-" not in output
 
     def test_format_truncates_long_content(self):
-        """Test that long content is truncated to 400 characters."""
+        """Test that long content is truncated to 300 characters."""
         long_content = "x" * 500
         results = [
             {
@@ -255,8 +255,8 @@ class TestFormatSearchResults:
         ]
         output = format_search_results(results)
 
-        # Should be truncated
-        assert "..." in output
+        # Should be truncated with ellipsis character
+        assert "…" in output
         # The output will have formatting around it, but the content should be truncated
         assert long_content not in output  # Full content should not appear
 
@@ -273,7 +273,7 @@ class TestFormatSearchResults:
         output = format_search_results(results, show_full_content=True)
 
         # Should not be truncated
-        assert "..." not in output
+        assert "…" not in output
         assert long_content in output
 
 
@@ -476,8 +476,8 @@ class TestCallToolSearch:
             assert len(result) == 1
             text_result = result[0].text
 
-            # Check formatting includes expected elements
-            assert "relevant code locations" in text_result or "No results" in text_result
+            # Check formatting includes expected elements (compact format now)
+            assert "---" in text_result or "No results" in text_result
 
 
 # ============================================================================

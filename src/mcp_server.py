@@ -27,43 +27,47 @@ api: Optional[CodeRAGAPI] = None
 
 
 def format_search_results(results: List[Dict[str, Any]], show_full_content: bool = False) -> str:
-    """Format search results as a readable text string.
+    """Format search results as a compact, token-efficient string optimized for AI consumption.
 
     Args:
         results: Search results from the API
         show_full_content: If True, show full content; if False, truncate long results
+
+    Format (minimizes tokens while preserving clarity):
+        file_path:start-end (score)
+        <content>
+        ---
     """
     if not results:
-        return "No results found."
+        return "No results."
 
-    output_lines = [f"Found {len(results)} relevant code locations:\n"]
+    output_lines = []
 
-    for i, result in enumerate(results):
+    for result in results:
         file_path = result["file_path"]
         start_line = result.get("start_line")
         end_line = result.get("end_line")
         similarity = result["similarity"]
         content = result["content"]
 
-        output_lines.append("-" * 60)
-        output_lines.append(f"[{i + 1}] {file_path}")
-
-        # Show line numbers if available (cleaner than chunk index)
+        # Compact header: file:lines (score)
         if start_line and end_line:
-            output_lines.append(f"    Lines {start_line}-{end_line} | Relevance: {similarity:.1%}")
+            header = f"{file_path}:{start_line}-{end_line} ({similarity:.2f})"
         else:
-            output_lines.append(f"    Relevance: {similarity:.1%}")
+            header = f"{file_path} ({similarity:.2f})"
 
-        output_lines.append("-" * 60)
+        output_lines.append(header)
 
-        # Truncate or show full content based on parameter
+        # Content (truncate if needed)
         if show_full_content:
             output_lines.append(content)
         else:
-            # Smart truncation: show up to 400 chars
-            display_content = content[:400] + "..." if len(content) > 400 else content
+            # Truncate to 300 chars (reduced from 400 to save tokens)
+            display_content = content[:300] + "…" if len(content) > 300 else content
             output_lines.append(display_content)
-        output_lines.append("")
+
+        # Minimal separator
+        output_lines.append("---")
 
     return "\n".join(output_lines)
 
@@ -83,24 +87,16 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_codebase",
             description=(
-                "Search for code in a codebase using natural language queries. "
-                "Automatically indexes the codebase on first use (transparent to you). "
-                "\n\n"
-                "Use this when you need to:\n"
-                "- Find where specific functionality is implemented\n"
-                "- Locate code patterns or examples\n"
-                "- Understand how a feature works\n"
-                "- Search for error handling, API calls, database logic, etc.\n"
+                "Search code using natural language queries. Auto-indexes on first use. "
+                "Returns compact results: file:lines (score) + code snippet.\n"
                 "\n"
-                "Example queries:\n"
-                "- 'authentication and login logic'\n"
-                "- 'database connection setup'\n"
-                "- 'error handling for API requests'\n"
-                "- 'user registration implementation'\n"
-                "- 'how files are uploaded'\n"
+                "Use for: finding implementations, locating patterns, understanding features, "
+                "searching error handling, APIs, database logic.\n"
                 "\n"
-                "Returns: Relevant code snippets with file paths and line numbers. "
-                "You can then use the Read tool to see full file contents if needed."
+                "Query examples: 'authentication logic', 'database setup', 'error handling', "
+                "'file upload', 'user registration'.\n"
+                "\n"
+                "Returns token-efficient format. Use Read tool for full file contents."
             ),
             inputSchema={
                 "type": "object",
