@@ -87,16 +87,21 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_codebase",
             description=(
-                "Search code using natural language queries. Auto-indexes on first use. "
-                "Returns compact results: file:lines (score) + code snippet.\n"
+                "Semantic code search using natural language queries. Auto-indexes on first use.\n"
                 "\n"
-                "Use for: finding implementations, locating patterns, understanding features, "
-                "searching error handling, APIs, database logic.\n"
+                "Best for exploratory searches when you don't know exact file names or method names.\n"
+                "Returns: file:lines (relevance score) + code snippet for fast discovery.\n"
                 "\n"
-                "Query examples: 'authentication logic', 'database setup', 'error handling', "
-                "'file upload', 'user registration'.\n"
+                "Ideal queries:\n"
+                "  • 'reasoning tokens handling' → finds all related implementations\n"
+                "  • 'authentication logic' → locates auth files and patterns\n"
+                "  • 'database setup' → discovers where DB is configured\n"
+                "  • 'error handling for uploads' → finds relevant error handling\n"
                 "\n"
-                "Returns token-efficient format. Use Read tool for full file contents."
+                "Workflow: Use this for discovery → Read tool for full context → Grep for exact patterns.\n"
+                "\n"
+                "Note: Results show location + snippet. You'll typically use Read to examine full methods.\n"
+                "For known-target searches (exact method names), Grep may be faster."
             ),
             inputSchema={
                 "type": "object",
