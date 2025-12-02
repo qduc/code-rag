@@ -244,14 +244,19 @@ async def async_main():
     """Run the MCP server (async implementation)."""
     global api
 
-    # Initialize the Code-RAG API
+    # Initialize the Code-RAG API with lazy loading for fast startup
     # These can be customized via environment variables (CODE_RAG_*)
     try:
         api = CodeRAGAPI(
             database_type="chroma",  # Default to ChromaDB
             reranker_enabled=True,  # Enable reranking by default
+            lazy_load_models=True,  # Defer model loading for fast startup
         )
-        print("Code-RAG MCP server initialized", file=sys.stderr)
+        print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
+
+        # Start loading models in background immediately after initialization
+        api.start_background_loading()
+
     except Exception as e:
         print(f"Failed to initialize Code-RAG API: {e}", file=sys.stderr)
         sys.exit(1)

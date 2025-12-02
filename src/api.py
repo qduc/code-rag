@@ -85,6 +85,7 @@ class CodeRAGAPI:
         reranker_enabled: bool = True,
         reranker_model: Optional[str] = None,
         reranker_multiplier: int = 2,
+        lazy_load_models: bool = False,
     ):
         """
         Initialize the Code-RAG API.
@@ -96,12 +97,14 @@ class CodeRAGAPI:
             reranker_enabled: Whether to enable semantic reranking
             reranker_model: Name of the reranker model (uses default if None)
             reranker_multiplier: Retrieval multiplier for reranking (default: 2)
+            lazy_load_models: If True, defer model loading until first use (faster startup)
         """
         self.config = Config()
         self.database_type = database_type
         self.embedding_model_name = embedding_model
         self.reranker_enabled = reranker_enabled
         self.reranker_multiplier = reranker_multiplier
+        self.lazy_load_models = lazy_load_models
 
         # Use provided path or fall back to config default
         self.database_path = database_path or self.config.get_database_path()
@@ -112,7 +115,7 @@ class CodeRAGAPI:
         self._active_collection: Optional[str] = None
 
         # Initialize embedding model
-        self.embedding_model = self._create_embedding_model(embedding_model)
+        self.embedding_model = self._create_embedding_model(embedding_model, lazy_load=lazy_load_models)
 
         # Initialize database
         self.database = self._create_database(database_type, self.database_path)
@@ -122,17 +125,27 @@ class CodeRAGAPI:
         if reranker_enabled:
             try:
                 model_name = reranker_model or self.config.get_reranker_model()
-                self.reranker = CrossEncoderReranker(model_name)
+                self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models)
             except Exception as e:
                 print(f"Warning: Failed to load reranker ({e}), disabling reranking")
                 self.reranker = None
 
-    def _create_embedding_model(self, model_name: str) -> EmbeddingInterface:
+    def start_background_loading(self):
+        """Start loading models in background threads for faster startup."""
+        # Start embedding model loading in background
+        if hasattr(self.embedding_model, 'start_background_loading'):
+            self.embedding_model.start_background_loading()
+
+        # Start reranker model loading in background
+        if self.reranker and hasattr(self.reranker, 'start_background_loading'):
+            self.reranker.start_background_loading()
+
+    def _create_embedding_model(self, model_name: str, lazy_load: bool = False) -> EmbeddingInterface:
         """Create an embedding model instance based on the model name."""
         if model_name.startswith("text-embedding-"):
             return OpenAIEmbedding(model_name)
         else:
-            return SentenceTransformerEmbedding(model_name)
+            return SentenceTransformerEmbedding(model_name, lazy_load=lazy_load)
 
     def _create_database(
         self, database_type: str, database_path: str
