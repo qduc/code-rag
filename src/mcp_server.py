@@ -11,6 +11,7 @@ Design Philosophy:
 
 import asyncio
 import json
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -249,9 +250,23 @@ async def async_main():
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
+def signal_handler(signum, frame):
+    """Handle SIGINT (Ctrl+C) for clean exit."""
+    print("\nShutting down Code-RAG MCP server...", file=sys.stderr)
+    sys.exit(0)
+
+
 def main():
     """Entry point for the MCP server (synchronous wrapper)."""
-    asyncio.run(async_main())
+    # Register signal handler for clean exit on Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
+
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        # This handles the case where asyncio.run itself is interrupted
+        print("\nShutting down Code-RAG MCP server...", file=sys.stderr)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
