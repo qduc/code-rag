@@ -26,15 +26,20 @@ from .api import CodeRAGAPI
 api: Optional[CodeRAGAPI] = None
 
 
-def format_search_results(results: List[Dict[str, Any]], show_full_content: bool = False) -> str:
+def format_search_results(
+    results: List[Dict[str, Any]],
+    show_full_content: bool = False,
+    content_limit: int = 600,
+) -> str:
     """Format search results as a compact, token-efficient string optimized for AI consumption.
 
     Args:
         results: Search results from the API
         show_full_content: If True, show full content; if False, truncate long results
+        content_limit: Maximum characters to show per result (default: 600)
 
     Format (minimizes tokens while preserving clarity):
-        file_path:start-end (score)
+        file_path:start-end | func_name | ClassName (score)
         <content>
         ---
     """
@@ -48,13 +53,35 @@ def format_search_results(results: List[Dict[str, Any]], show_full_content: bool
         start_line = result.get("start_line")
         end_line = result.get("end_line")
         similarity = result["similarity"]
-        content = result["content"]
+        content = result.get("expanded_content", result["content"])
 
-        # Compact header: file:lines (score)
+        # Use expanded line numbers if available
+        if "expanded_start_line" in result:
+            start_line = result["expanded_start_line"]
+            end_line = result["expanded_end_line"]
+
+        # Extract symbol info for header
+        function_name = result.get("function_name")
+        class_name = result.get("class_name")
+
+        # Build header: file:lines | symbol_info (score)
         if start_line and end_line:
-            header = f"{file_path}:{start_line}-{end_line} ({similarity:.2f})"
+            header_parts = [f"{file_path}:{start_line}-{end_line}"]
         else:
-            header = f"{file_path} ({similarity:.2f})"
+            header_parts = [file_path]
+
+        # Add symbol context
+        symbol_parts = []
+        if function_name:
+            symbol_parts.append(f"{function_name}()")
+        if class_name:
+            symbol_parts.append(class_name)
+
+        if symbol_parts:
+            header_parts.append(" | ".join(symbol_parts))
+
+        header_parts.append(f"({similarity:.2f})")
+        header = " ".join(header_parts)
 
         output_lines.append(header)
 
@@ -62,8 +89,11 @@ def format_search_results(results: List[Dict[str, Any]], show_full_content: bool
         if show_full_content:
             output_lines.append(content)
         else:
-            # Truncate to 300 chars (reduced from 400 to save tokens)
-            display_content = content[:300] + "…" if len(content) > 300 else content
+            # Truncate to content_limit chars
+            if len(content) > content_limit:
+                display_content = content[:content_limit] + "…"
+            else:
+                display_content = content
             output_lines.append(display_content)
 
         # Minimal separator
@@ -90,7 +120,7 @@ async def list_tools() -> list[Tool]:
                 "Semantic code search using natural language queries. Auto-indexes on first use.\n"
                 "\n"
                 "Best for exploratory searches when you don't know exact file names or method names.\n"
-                "Returns: file:lines (relevance score) + code snippet for fast discovery.\n"
+                "Returns: file:lines | function() | ClassName (score) + code snippet.\n"
                 "\n"
                 "Ideal queries:\n"
                 "  • 'reasoning tokens handling' → finds all related implementations\n"
@@ -98,10 +128,10 @@ async def list_tools() -> list[Tool]:
                 "  • 'database setup' → discovers where DB is configured\n"
                 "  • 'error handling for uploads' → finds relevant error handling\n"
                 "\n"
-                "Workflow: Use this for discovery → Read tool for full context → Grep for exact patterns.\n"
+                "Results include function/class names when available, reducing need for follow-up reads.\n"
+                "Use expand_context=true for fuller code context around matches.\n"
                 "\n"
-                "Note: Results show location + snippet. You'll typically use Read to examine full methods.\n"
-                "For known-target searches (exact method names), Grep may be faster."
+                "Workflow: Use this for discovery → Read tool for full file context when needed."
             ),
             inputSchema={
                 "type": "object",
@@ -118,6 +148,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Maximum number of results to return (default: 5, max: 20)",
                         "default": 5,
+                    },
+                    "expand_context": {
+                        "type": "boolean",
+                        "description": "If true, include surrounding code for more context (slightly slower)",
+                        "default": False,
                     },
                 },
                 "required": ["codebase_path", "query"],
@@ -150,6 +185,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             codebase_path = arguments.get("codebase_path")
             query = arguments.get("query")
             max_results = min(arguments.get("max_results", 5), 20)  # Cap at 20
+            expand_context = arguments.get("expand_context", False)
 
             if not codebase_path:
                 return [TextContent(type="text", text="Error: 'codebase_path' is required")]
@@ -158,9 +194,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
 
             # Auto-index if needed using unified method
             # MCP mode: no validation, no user confirmation, silent indexing
+            # Collection name is auto-generated from codebase path for uniqueness
             result = api.ensure_indexed(
                 codebase_path,
-                collection_name="codebase",
+                collection_name=None,  # Auto-generate unique name per codebase
                 force_reindex=False,
                 validate_codebase=False,  # Skip validation in MCP (auto-accept)
                 validation_callback=None,
@@ -170,8 +207,13 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             if not result["success"]:
                 return [TextContent(type="text", text=result.get("error", "Unknown error"))]
 
-            # Perform search
-            results = api.search(query, n_results=max_results, collection_name="codebase")
+            # Perform search with optional context expansion
+            # Note: search will use the same auto-generated collection name
+            results = api.search(
+                query,
+                n_results=max_results,
+                expand_context=expand_context,
+            )
 
             # Format and return results
             formatted = format_search_results(results, show_full_content=False)

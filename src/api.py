@@ -4,6 +4,7 @@ This module provides a clean, reusable API for code-rag operations
 that can be used by MCP servers, CLI tools, or other integrations.
 """
 
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Set, Callable
 from .config.config import Config
@@ -16,6 +17,28 @@ from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedd
 from .processor.file_processor import FileProcessor
 from .reranker.reranker_interface import RerankerInterface
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
+
+
+def generate_collection_name(codebase_path: str) -> str:
+    """Generate a unique collection name for a codebase path.
+
+    Uses a hash of the absolute path to ensure uniqueness while keeping
+    collection names valid and manageable.
+
+    Args:
+        codebase_path: Path to the codebase
+
+    Returns:
+        A unique collection name string
+    """
+    # Resolve to absolute path for consistency
+    abs_path = str(Path(codebase_path).resolve())
+
+    # Create a short hash of the path
+    path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+
+    # Collection name format: codebase_<hash>
+    return f"codebase_{path_hash}"
 
 
 def looks_like_codebase(root_path: Path, processor: FileProcessor) -> bool:
@@ -85,6 +108,8 @@ class CodeRAGAPI:
 
         # Session state for tracking indexed codebases
         self._indexed_paths: Set[str] = set()
+        # Track the currently active collection name
+        self._active_collection: Optional[str] = None
 
         # Initialize embedding model
         self.embedding_model = self._create_embedding_model(embedding_model)
@@ -234,7 +259,8 @@ class CodeRAGAPI:
         self,
         query: str,
         n_results: int = 5,
-        collection_name: str = "codebase",
+        collection_name: Optional[str] = None,
+        expand_context: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search over the indexed codebase.
@@ -242,7 +268,8 @@ class CodeRAGAPI:
         Args:
             query: Natural language search query
             n_results: Number of results to return
-            collection_name: Name of the collection to search
+            collection_name: Name of the collection to search (uses active collection if None)
+            expand_context: If True, fetch adjacent chunks to provide more context
 
         Returns:
             List of search results, each containing:
@@ -252,8 +279,17 @@ class CodeRAGAPI:
                 - total_chunks: Total number of chunks in the file
                 - start_line: Starting line number (if available)
                 - end_line: Ending line number (if available)
+                - function_name: Name of the enclosing function (if available)
+                - class_name: Name of the enclosing class (if available)
+                - symbol_type: Type of symbol (function, class, method)
                 - similarity: Similarity score (0-1, higher is better)
         """
+        # Use active collection if none specified
+        if collection_name is None:
+            if self._active_collection is None:
+                raise ValueError("No collection specified and no active collection set. Call ensure_indexed() first.")
+            collection_name = self._active_collection
+
         # Generate embedding for query
         query_embedding = self.embedding_model.embed(query)
 
@@ -317,14 +353,76 @@ class CodeRAGAPI:
                 "total_chunks": metadata.get("total_chunks", 1),
                 "start_line": metadata.get("start_line"),
                 "end_line": metadata.get("end_line"),
+                "function_name": metadata.get("function_name"),
+                "class_name": metadata.get("class_name"),
+                "symbol_type": metadata.get("symbol_type"),
                 "similarity": similarity,
             }
             formatted_results.append(result)
 
+        # Expand context if requested
+        if expand_context and formatted_results:
+            formatted_results = self._expand_context(formatted_results)
+
         return formatted_results
 
+    def _expand_context(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Expand search results by fetching adjacent chunks for more context.
+
+        For each result, attempts to fetch the previous and next chunks from the same file
+        and merges them into expanded_content.
+        """
+        expanded = []
+
+        for result in results:
+            file_path = result["file_path"]
+            chunk_index = result["chunk_index"]
+            total_chunks = result["total_chunks"]
+
+            # Collect adjacent chunk indices
+            adjacent_indices = []
+            if chunk_index > 0:
+                adjacent_indices.append(chunk_index - 1)
+            adjacent_indices.append(chunk_index)  # Current chunk
+            if chunk_index < total_chunks - 1:
+                adjacent_indices.append(chunk_index + 1)
+
+            # Try to fetch adjacent chunks
+            chunks_content = {}
+            chunks_metadata = {}
+
+            for idx in adjacent_indices:
+                chunk = self.get_chunk(file_path, idx)
+                if chunk:
+                    chunks_content[idx] = chunk["content"]
+                    chunks_metadata[idx] = chunk
+
+            # Build expanded content
+            if len(chunks_content) > 1:
+                # Sort by chunk index and concatenate
+                sorted_indices = sorted(chunks_content.keys())
+                expanded_content = "\n".join(chunks_content[i] for i in sorted_indices)
+
+                # Update line numbers to span the expanded range
+                first_chunk = chunks_metadata.get(sorted_indices[0], {})
+                last_chunk = chunks_metadata.get(sorted_indices[-1], {})
+
+                result["expanded_content"] = expanded_content
+                result["expanded_start_line"] = first_chunk.get("start_line", result["start_line"])
+                result["expanded_end_line"] = last_chunk.get("end_line", result["end_line"])
+            else:
+                # No expansion possible
+                result["expanded_content"] = result["content"]
+                result["expanded_start_line"] = result["start_line"]
+                result["expanded_end_line"] = result["end_line"]
+
+            expanded.append(result)
+
+        return expanded
+
     def get_chunk(
-        self, file_path: str, chunk_index: int, collection_name: str = "codebase"
+        self, file_path: str, chunk_index: int, collection_name: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific chunk by file path and chunk index.
@@ -332,11 +430,17 @@ class CodeRAGAPI:
         Args:
             file_path: Path to the source file
             chunk_index: Index of the chunk within the file
-            collection_name: Name of the collection to search
+            collection_name: Name of the collection to search (uses active collection if None)
 
         Returns:
             Chunk data if found, None otherwise
         """
+        # Use active collection if none specified
+        if collection_name is None:
+            if self._active_collection is None:
+                raise ValueError("No collection specified and no active collection set. Call ensure_indexed() first.")
+            collection_name = self._active_collection
+
         # Query using file path and chunk index in metadata
         # This is a simple implementation - could be optimized with metadata filtering
         query_embedding = self.embedding_model.embed(f"file:{file_path}")
@@ -389,7 +493,7 @@ class CodeRAGAPI:
     def ensure_indexed(
         self,
         codebase_path: str,
-        collection_name: str = "codebase",
+        collection_name: Optional[str] = None,
         force_reindex: bool = False,
         validate_codebase: bool = False,
         validation_callback: Optional[Callable[[Path], bool]] = None,
@@ -403,10 +507,11 @@ class CodeRAGAPI:
         - Codebase validation heuristic (from CLI)
         - Dimension mismatch handling (from CLI)
         - User confirmation for non-codebases (from CLI, via callback)
+        - Auto-generates unique collection names per codebase path
 
         Args:
             codebase_path: Path to the codebase root directory
-            collection_name: Name of the collection to use
+            collection_name: Name of the collection to use (auto-generated from path if None)
             force_reindex: If True, delete existing index and reindex
             validate_codebase: If True, check if path looks like a codebase
             validation_callback: Optional callback(path) -> bool for user confirmation
@@ -429,15 +534,34 @@ class CodeRAGAPI:
 
         path_str = str(path)
 
+        # Auto-generate collection name from path if not provided
+        if collection_name is None:
+            collection_name = generate_collection_name(path_str)
+
         # Check session cache first (fast path)
         if not force_reindex and path_str in self._indexed_paths:
             return {"success": True, "already_indexed": True, "total_chunks": self.count()}
 
-        # Check if database already has data
+        # Try to find existing data in the new collection first
+        # Initialize collection first (needed to check if data exists)
+        # This loads existing data from disk if available
+        stored_model = self.initialize_collection(collection_name, force_reindex=force_reindex)
+        reloaded_model = None
+
+        if stored_model and stored_model != self.embedding_model_name:
+            # Dimension mismatch - reload with stored model
+            self.embedding_model = self._create_embedding_model(stored_model)
+            self.embedding_model_name = stored_model
+            reloaded_model = stored_model
+
+        # Set this as the active collection for subsequent operations
+        self._active_collection = collection_name
+
+        # Now that collection is initialized, check if database already has data
         if not force_reindex and self.is_processed() and self.count() > 0:
             # Mark as indexed and return
             self._indexed_paths.add(path_str)
-            return {"success": True, "already_indexed": True, "total_chunks": self.count()}
+            return {"success": True, "already_indexed": True, "total_chunks": self.count(), "reloaded_model": reloaded_model}
 
         # Need to index - perform validation if requested
         if validate_codebase:
@@ -451,16 +575,6 @@ class CodeRAGAPI:
                             "error": "User declined to index non-codebase directory",
                         }
                 # If no callback, proceed anyway (MCP mode)
-
-        # Initialize collection and handle dimension mismatch
-        stored_model = self.initialize_collection(collection_name, force_reindex=force_reindex)
-        reloaded_model = None
-
-        if stored_model and stored_model != self.embedding_model_name:
-            # Dimension mismatch - reload with stored model
-            self.embedding_model = self._create_embedding_model(stored_model)
-            self.embedding_model_name = stored_model
-            reloaded_model = stored_model
 
         # Index the codebase
         try:

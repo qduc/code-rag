@@ -1,8 +1,65 @@
 """Syntax-aware chunking using Tree-sitter."""
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 import importlib
 from tree_sitter import Language, Parser, Node
+
+
+# Node types that represent named definitions we want to extract
+DEFINITION_NODE_TYPES = {
+    # Python
+    "function_definition",
+    "class_definition",
+    "decorated_definition",
+    # JavaScript/TypeScript
+    "function_declaration",
+    "class_declaration",
+    "method_definition",
+    "arrow_function",
+    "function",
+    # Go
+    "function_declaration",
+    "method_declaration",
+    "type_declaration",
+    # Rust
+    "function_item",
+    "impl_item",
+    "struct_item",
+    "enum_item",
+    "trait_item",
+    # Java
+    "method_declaration",
+    "class_declaration",
+    "interface_declaration",
+    # C/C++
+    "function_definition",
+    "class_specifier",
+    "struct_specifier",
+}
+
+# Node types that represent class/struct containers
+CLASS_NODE_TYPES = {
+    "class_definition",
+    "class_declaration",
+    "class_specifier",
+    "struct_specifier",
+    "struct_item",
+    "impl_item",
+    "interface_declaration",
+    "trait_item",
+}
+
+# Node types that represent functions/methods
+FUNCTION_NODE_TYPES = {
+    "function_definition",
+    "function_declaration",
+    "method_definition",
+    "method_declaration",
+    "arrow_function",
+    "function",
+    "function_item",
+}
+
 
 class SyntaxChunker:
     """
@@ -34,6 +91,7 @@ class SyntaxChunker:
         self.chunk_size = chunk_size
         self.overlap = overlap
         self._parsers = {}
+        self._current_tree = None  # Store current parse tree for metadata extraction
 
     def _get_parser(self, language_name: str):
         """Get or create a parser for the given language."""
@@ -67,7 +125,8 @@ class SyntaxChunker:
             language_name: The tree-sitter language identifier (e.g. 'python', 'javascript')
 
         Returns:
-            List of dictionaries with 'text', 'start_byte', and 'end_byte' keys
+            List of dictionaries with 'text', 'start_byte', 'end_byte', and optional
+            'function_name', 'class_name', 'symbol_type' keys
         """
         parser = self._get_parser(language_name)
         if not parser:
@@ -75,7 +134,10 @@ class SyntaxChunker:
 
         try:
             tree = parser.parse(bytes(content, "utf8"))
-            return self._chunk_tree(tree.root_node, content)
+            self._current_tree = tree  # Store for metadata extraction
+            chunks = self._chunk_tree(tree.root_node, content)
+            # Enrich chunks with AST metadata
+            return self._enrich_chunks_with_metadata(chunks, tree.root_node, content)
         except Exception as e:
             print(f"Error parsing content for syntax chunking: {e}")
             return []
@@ -204,3 +266,122 @@ class SyntaxChunker:
             "start_byte": start,
             "end_byte": end
         }
+
+    def _enrich_chunks_with_metadata(self, chunks: List[Dict[str, any]], root_node: Node, content: str) -> List[Dict[str, any]]:
+        """
+        Enrich chunks with AST metadata (function names, class names, symbol types).
+
+        For each chunk, finds the enclosing or primary definition and extracts its name.
+        """
+        # Build an index of all definitions in the file
+        definitions = self._collect_definitions(root_node, content)
+
+        for chunk in chunks:
+            start = chunk["start_byte"]
+            end = chunk["end_byte"]
+
+            # Find definitions that overlap with this chunk
+            chunk_functions = []
+            chunk_classes = []
+
+            for defn in definitions:
+                defn_start = defn["start_byte"]
+                defn_end = defn["end_byte"]
+
+                # Check if definition overlaps with chunk
+                if defn_start < end and defn_end > start:
+                    if defn["symbol_type"] == "function":
+                        chunk_functions.append(defn["name"])
+                    elif defn["symbol_type"] == "class":
+                        chunk_classes.append(defn["name"])
+
+            # Set metadata - use first/primary names found
+            if chunk_functions:
+                chunk["function_name"] = chunk_functions[0]
+                if len(chunk_functions) > 1:
+                    chunk["function_names"] = chunk_functions
+            if chunk_classes:
+                chunk["class_name"] = chunk_classes[0]
+                if len(chunk_classes) > 1:
+                    chunk["class_names"] = chunk_classes
+
+            # Determine primary symbol type
+            if chunk_functions and chunk_classes:
+                chunk["symbol_type"] = "method"  # Function inside a class
+            elif chunk_functions:
+                chunk["symbol_type"] = "function"
+            elif chunk_classes:
+                chunk["symbol_type"] = "class"
+
+        return chunks
+
+    def _collect_definitions(self, node: Node, content: str, parent_class: Optional[str] = None) -> List[Dict[str, any]]:
+        """
+        Recursively collect all function and class definitions from the AST.
+
+        Returns a list of dicts with: name, symbol_type, start_byte, end_byte, parent_class
+        """
+        definitions = []
+        node_type = node.type
+
+        # Check if this node is a definition
+        if node_type in DEFINITION_NODE_TYPES:
+            name = self._extract_definition_name(node, content)
+            if name:
+                if node_type in CLASS_NODE_TYPES:
+                    symbol_type = "class"
+                elif node_type in FUNCTION_NODE_TYPES:
+                    symbol_type = "function"
+                else:
+                    symbol_type = "definition"
+
+                definitions.append({
+                    "name": name,
+                    "symbol_type": symbol_type,
+                    "start_byte": node.start_byte,
+                    "end_byte": node.end_byte,
+                    "parent_class": parent_class,
+                })
+
+                # Update parent_class for nested definitions
+                if symbol_type == "class":
+                    parent_class = name
+
+        # Recurse into children
+        for child in node.children:
+            definitions.extend(self._collect_definitions(child, content, parent_class))
+
+        return definitions
+
+    def _extract_definition_name(self, node: Node, content: str) -> Optional[str]:
+        """
+        Extract the name of a function/class definition from an AST node.
+
+        Handles various language patterns for extracting identifier names.
+        """
+        # Handle decorated definitions (Python)
+        if node.type == "decorated_definition":
+            # Find the actual definition inside
+            for child in node.children:
+                if child.type in ("function_definition", "class_definition"):
+                    return self._extract_definition_name(child, content)
+            return None
+
+        # Look for 'name' or 'identifier' child nodes
+        for child in node.children:
+            if child.type in ("identifier", "name", "property_identifier"):
+                return content[child.start_byte:child.end_byte]
+            # Handle typed parameters pattern (TypeScript)
+            if child.type == "type_identifier":
+                return content[child.start_byte:child.end_byte]
+
+        # Fallback: look for first identifier in any child
+        for child in node.children:
+            if child.type == "identifier":
+                return content[child.start_byte:child.end_byte]
+            # Recurse one level for compound patterns
+            for grandchild in child.children:
+                if grandchild.type in ("identifier", "name"):
+                    return content[grandchild.start_byte:grandchild.end_byte]
+
+        return None

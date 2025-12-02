@@ -358,18 +358,30 @@ class FileProcessor:
                 start_line = byte_offset_to_line_number(content, start_byte)
                 end_line = byte_offset_to_line_number(content, end_byte)
 
+            # Build metadata dict
+            metadata = {
+                "file_path": file_path,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "start_line": start_line,
+                "end_line": end_line,
+                "start_byte": start_byte,
+                "end_byte": end_byte,
+            }
+
+            # Add AST metadata if available (from syntax chunker)
+            if isinstance(chunk, dict):
+                if "function_name" in chunk:
+                    metadata["function_name"] = chunk["function_name"]
+                if "class_name" in chunk:
+                    metadata["class_name"] = chunk["class_name"]
+                if "symbol_type" in chunk:
+                    metadata["symbol_type"] = chunk["symbol_type"]
+
             result.append({
                 "id": f"{file_path}:chunk_{i}",
                 "content": chunk_text,
-                "metadata": {
-                    "file_path": file_path,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    "start_line": start_line,
-                    "end_line": end_line,
-                    "start_byte": start_byte,
-                    "end_byte": end_byte,
-                },
+                "metadata": metadata,
             })
 
         return result

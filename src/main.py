@@ -353,9 +353,10 @@ def main():
 
     # Use unified ensure_indexed method
     # CLI mode: with validation and user confirmation
+    # Collection name is auto-generated from codebase path for uniqueness
     result = api.ensure_indexed(
         str(codebase_path),
-        collection_name="codebase",
+        collection_name=None,  # Auto-generate unique name per codebase
         force_reindex=args.reindex,
         validate_codebase=True,  # Enable validation in CLI
         validation_callback=validation_callback,

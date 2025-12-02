@@ -244,8 +244,8 @@ class TestFormatSearchResults:
         assert ":1-" not in output
 
     def test_format_truncates_long_content(self):
-        """Test that long content is truncated to 300 characters."""
-        long_content = "x" * 500
+        """Test that long content is truncated to 600 characters (default limit)."""
+        long_content = "x" * 800
         results = [
             {
                 "file_path": "src/test.py",
@@ -276,6 +276,82 @@ class TestFormatSearchResults:
         assert "…" not in output
         assert long_content in output
 
+    def test_format_includes_function_name(self):
+        """Test that function names are included in the header when available."""
+        results = [
+            {
+                "file_path": "src/auth.py",
+                "start_line": 10,
+                "end_line": 25,
+                "similarity": 0.92,
+                "content": "def authenticate(username, password):\n    ...",
+                "function_name": "authenticate",
+            }
+        ]
+        output = format_search_results(results)
+
+        # Should include function name with () notation
+        assert "authenticate()" in output
+        assert "src/auth.py:10-25" in output
+
+    def test_format_includes_class_name(self):
+        """Test that class names are included in the header when available."""
+        results = [
+            {
+                "file_path": "src/models.py",
+                "start_line": 5,
+                "end_line": 50,
+                "similarity": 0.88,
+                "content": "class UserModel:\n    ...",
+                "class_name": "UserModel",
+            }
+        ]
+        output = format_search_results(results)
+
+        # Should include class name
+        assert "UserModel" in output
+        assert "src/models.py:5-50" in output
+
+    def test_format_includes_both_function_and_class(self):
+        """Test that both function and class names are shown for methods."""
+        results = [
+            {
+                "file_path": "src/auth.py",
+                "start_line": 15,
+                "end_line": 30,
+                "similarity": 0.95,
+                "content": "def validate_token(self, token):\n    ...",
+                "function_name": "validate_token",
+                "class_name": "AuthHandler",
+                "symbol_type": "method",
+            }
+        ]
+        output = format_search_results(results)
+
+        # Should include both
+        assert "validate_token()" in output
+        assert "AuthHandler" in output
+
+    def test_format_uses_expanded_content_when_available(self):
+        """Test that expanded_content is used when present in results."""
+        results = [
+            {
+                "file_path": "src/test.py",
+                "start_line": 10,
+                "end_line": 15,
+                "similarity": 0.9,
+                "content": "original chunk",
+                "expanded_content": "expanded content with more context",
+                "expanded_start_line": 5,
+                "expanded_end_line": 20,
+            }
+        ]
+        output = format_search_results(results)
+
+        # Should use expanded content and line numbers
+        assert "expanded content with more context" in output
+        assert "5-20" in output
+
 
 # ============================================================================
 # Tests for list_tools
@@ -304,6 +380,7 @@ class TestListTools:
         assert "codebase_path" in schema["properties"]
         assert "query" in schema["properties"]
         assert "max_results" in schema["properties"]
+        assert "expand_context" in schema["properties"]
 
         # Check required fields
         assert "codebase_path" in schema["required"]
@@ -574,7 +651,7 @@ class TestCodeRAGAPIIntegration:
         assert len(results) > 0
 
     def test_api_search_result_structure(self, indexed_api):
-        """Test that search results have correct structure."""
+        """Test that search results have correct structure including new metadata fields."""
         api_instance, _ = indexed_api
 
         results = api_instance.search(
@@ -585,10 +662,34 @@ class TestCodeRAGAPIIntegration:
 
         if results:
             result = results[0]
+            # Core fields
             assert "content" in result
             assert "file_path" in result
             assert "similarity" in result
             assert 0 <= result["similarity"] <= 1
+            # New metadata fields (may be None if not available for this chunk)
+            assert "function_name" in result
+            assert "class_name" in result
+            assert "symbol_type" in result
+
+    def test_api_search_with_expand_context(self, indexed_api):
+        """Test that expand_context parameter works."""
+        api_instance, _ = indexed_api
+
+        # Search with context expansion
+        results = api_instance.search(
+            "authentication",
+            n_results=3,
+            collection_name="test_codebase",
+            expand_context=True,
+        )
+
+        if results:
+            result = results[0]
+            # Should have expanded content fields
+            assert "expanded_content" in result
+            assert "expanded_start_line" in result
+            assert "expanded_end_line" in result
 
     def test_api_count_returns_number(self, indexed_api):
         """Test that count returns the number of chunks."""
