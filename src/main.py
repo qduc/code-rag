@@ -179,10 +179,10 @@ def query_session(
                 )
             ):
                 file_path = metadata.get("file_path", "Unknown")
-                chunk_index = metadata.get("chunk_index", 0)
-                total_chunks = metadata.get("total_chunks", 1)
                 start_line = metadata.get("start_line")
                 end_line = metadata.get("end_line")
+                function_name = metadata.get("function_name")
+                class_name = metadata.get("class_name")
 
                 # Calculate similarity score
                 if reranker is not None:
@@ -190,19 +190,32 @@ def query_session(
                 else:
                     similarity = 1 - distance  # Convert cosine distance to similarity
 
-                print("-" * 60)
-                print(f"Result {i + 1} | Similarity: {similarity:.4f}")
-                print(f"File: {file_path}")
+                # Build header: file:lines | symbol_info (score)
+                # Format matches MCP server output for consistency
                 if start_line and end_line:
-                    print(f"Lines: {start_line}-{end_line} | Chunk: {chunk_index + 1}/{total_chunks}")
+                    header_parts = [f"{file_path}:{start_line}-{end_line}"]
                 else:
-                    print(f"Chunk: {chunk_index + 1}/{total_chunks}")
-                print("-" * 60)
+                    header_parts = [file_path]
 
-                # Truncate long documents for display
-                display_doc = doc[:500] + "..." if len(doc) > 500 else doc
+                # Add symbol context
+                symbol_parts = []
+                if function_name:
+                    symbol_parts.append(f"{function_name}()")
+                if class_name:
+                    symbol_parts.append(class_name)
+
+                if symbol_parts:
+                    header_parts.append(" | ".join(symbol_parts))
+
+                header_parts.append(f"({similarity:.2f})")
+                header = " ".join(header_parts)
+
+                print(header)
+
+                # Truncate long documents for display (600 chars to match MCP default)
+                display_doc = doc[:600] + "…" if len(doc) > 600 else doc
                 print(display_doc)
-                print()
+                print("---")
 
         except KeyboardInterrupt:
             print("\n\nExiting query session. Goodbye!")
