@@ -37,12 +37,24 @@
 ### 3. **Embedding Layer**
 - **Architecture**: Abstract interface with multiple pluggable implementations
 - **Core Responsibility**: Convert text into vector embeddings for similarity search
-- **Interface Contract**: Any embedding model must support single and batch embedding operations, and report its vector dimensionality
+- **Interface Contract**: Any embedding model must support single and batch embedding operations, report its vector dimensionality, and optionally support query-specific prefixes via `embed_query()`
 - **Default Implementation**: Local transformer-based model (lightweight, no API calls required)
+- **Supported Models**:
+  - `sentence-transformers/all-MiniLM-L6-v2`: Default general-purpose embedding model
+  - `nomic-ai/CodeRankEmbed`: Code-optimized model with automatic query instruction prefixing
+  - `text-embedding-3-small`: OpenAI embedding model (requires API key)
 - **Design Goal**: Extensible to support alternative providers (OpenAI, Hugging Face, etc.) without changing core logic
-- **Key Pattern**: Embeddings are generated once during initial processing, then used for all queries; models are stateless
+- **Key Pattern**:
+  - Code chunks are embedded once during indexing using `embed()` or `embed_batch()`
+  - User queries are embedded using `embed_query()`, which automatically prepends model-specific instruction prefixes when needed (e.g., "Represent this query for searching relevant code: " for CodeRankEmbed)
+  - Models are stateless and reused across all operations
 
-**When modifying**: New embedding implementations should follow the interface contract; embedding dimension must be consistent across all operations
+**When modifying**:
+- New embedding implementations should follow the interface contract; embedding dimension must be consistent across all operations
+- Models requiring special query instructions should:
+  1. Define instruction prefix in `QUERY_INSTRUCTION_PREFIX` class variable
+  2. Override `embed_query()` to apply the prefix before embedding
+  3. Keep `embed()` and `embed_batch()` unchanged for document embedding
 
 ### 4. **Configuration** (`src/config/config.py`)
 - Reads from environment variables with defaults:

@@ -20,6 +20,21 @@ class EmbeddingInterface(ABC):
         """
         pass
 
+    def embed_query(self, query: str) -> List[float]:
+        """
+        Embed a query string with the appropriate instruction prefix.
+
+        This method allows models to apply special query-specific prefixes.
+        Default implementation delegates to embed(), but subclasses can override.
+
+        Args:
+            query: The query text to embed
+
+        Returns:
+            A list of floats representing the embedding vector
+        """
+        return self.embed(query)
+
     @abstractmethod
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """

@@ -141,7 +141,9 @@ Code-RAG uses a plugin-based architecture with abstract interfaces for extensibi
 
 3. **Embedding Layer**: Pluggable embedding model interface
    - Local: sentence-transformers (no API calls)
+   - Code-optimized: nomic-ai/CodeRankEmbed (specialized for code search)
    - OpenAI: text-embedding-3-small, text-embedding-ada-002
+   - Automatic query instruction prefixing for compatible models
    - Easy to add new providers
 
 4. **Reranker**: Optional semantic reranking
@@ -170,7 +172,10 @@ Code-RAG can be configured via environment variables:
 ### Example Configuration
 
 ```bash
-# Use OpenAI embeddings
+# Use CodeRankEmbed for optimized code search (recommended)
+export CODE_RAG_EMBEDDING_MODEL="nomic-ai/CodeRankEmbed"
+
+# Or use OpenAI embeddings
 export OPENAI_API_KEY="sk-..."
 export CODE_RAG_EMBEDDING_MODEL="text-embedding-3-small"
 
@@ -185,6 +190,8 @@ export CODE_RAG_BATCH_SIZE="64"
 # Run Code-RAG
 code-rag --path /path/to/project
 ```
+
+**Note:** When using `nomic-ai/CodeRankEmbed`, the model automatically prepends the instruction prefix "Represent this query for searching relevant code: " to all search queries as required by the model. This happens transparently - you don't need to include the prefix in your queries.
 
 ## Supported Languages
 

@@ -11,6 +11,11 @@ from .embedding_interface import EmbeddingInterface
 class SentenceTransformerEmbedding(EmbeddingInterface):
     """SentenceTransformers implementation for generating embeddings."""
 
+    # Models that require special instruction prefixes for queries
+    QUERY_INSTRUCTION_PREFIX = {
+        "nomic-ai/CodeRankEmbed": "Represent this query for searching relevant code: ",
+    }
+
     def __init__(self, model_name: str = "all-MiniLM-L6-v2", lazy_load: bool = False):
         """
         Initialize the SentenceTransformers model.
@@ -23,6 +28,9 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         self.model: Optional[SentenceTransformer] = None
         self._loading_lock = threading.Lock()
         self._loading_thread: Optional[threading.Thread] = None
+
+        # Determine if this model requires query instruction prefix
+        self.query_prefix = self.QUERY_INSTRUCTION_PREFIX.get(model_name, "")
 
         if not lazy_load:
             self._load_model()
@@ -65,6 +73,23 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         self._ensure_model_loaded()
         embedding = self.model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
+
+    def embed_query(self, query: str) -> List[float]:
+        """
+        Embed a query string with the appropriate instruction prefix.
+
+        For models like CodeRankEmbed that require special query instructions,
+        this method prepends the required prefix.
+
+        Args:
+            query: The query text to embed
+
+        Returns:
+            A list of floats representing the embedding vector
+        """
+        if self.query_prefix:
+            query = self.query_prefix + query
+        return self.embed(query)
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """

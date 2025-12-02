@@ -310,8 +310,8 @@ class CodeRAGAPI:
                 raise ValueError("No collection specified and no active collection set. Call ensure_indexed() first.")
             collection_name = self._active_collection
 
-        # Generate embedding for query
-        query_embedding = self.embedding_model.embed(query)
+        # Generate embedding for query using embed_query to support models with query-specific prefixes
+        query_embedding = self.embedding_model.embed_query(query)
 
         # Determine how many results to retrieve from database
         # If filtering is enabled, fetch more results to ensure we have enough after filtering

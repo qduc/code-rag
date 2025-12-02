@@ -117,6 +117,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_codebase",
             description=(
+                "PRIMARY TOOL for finding code in a codebase. Use this FIRST whenever you need to locate something - it's more effective than guessing keywords or using grep.\n"
+                "\n"
                 "Semantic code search using natural language queries.\n"
                 "\n"
                 "Best for exploratory searches when you don't know exact file names or method names.\n"
