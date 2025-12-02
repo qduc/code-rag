@@ -5,10 +5,9 @@
 The Code-RAG MCP (Model Context Protocol) server exposes Code-RAG's semantic code search as tools that Claude can call during a conversation. This lets Claude:
 Internally it reuses the same processing, embeddings, and database stack as the CLI, but is wrapped in a dedicated API layer and MCP server.
 
-The **current design** exposes **two tools**:
+The **final design** intentionally exposes **one tool only**:
 
 - **`search_codebase`** – semantic code search with transparent auto-indexing.
-- **`get_file_content`** – read file contents with optional line range for deep context.
 
 ---
 
@@ -79,71 +78,35 @@ Restart Claude Code after adding the server so it picks up the new configuration
 
 ---
 
-## Available Tools
+## The One Tool: `search_codebase`
 
-### Tool 1: `search_codebase`
+The MCP surface is deliberately minimal: **one tool that does one thing well**.
 
-Semantic search over a local codebase using natural language.
+### Purpose
 
-#### Best For
-- Discovering where functionality is implemented
-- Finding code patterns or examples you don't know the location of
-- Understanding how features work across the codebase
-- Exploratory searches ("how does X work?")
+- Semantic search over a local codebase using natural language.
+- Handles **indexing automatically on first use**; no separate indexing commands.
 
-#### Parameters
+### Parameters
 
 - `codebase_path` (required): Absolute path to the codebase root, for example `/home/user/myproject`.
 - `query` (required): Natural language description of what you are looking for, such as `"authentication logic"`.
 - `max_results` (optional): Number of results to return (default: 5, maximum: 20).
-- `show_full_content` (optional): If true, show full chunk content without truncation (default: false).
 
-#### Behavior
+### Behavior
 
 1. On the first call when the underlying database is empty, the server silently indexes the given `codebase_path`.
-2. Subsequent calls reuse that same index.
-3. Results include file paths, line ranges, relevance scores, and code snippets.
-4. Use `show_full_content=true` for more context, or use `get_file_content` to read full files.
+2. Subsequent calls reuse that same index. The current implementation maintains a *single* shared index; changing `codebase_path` while reusing the same database path/server process does **not** create a new index.
+3. Results include file paths, line ranges, relevance scores, and a short snippet for each hit.
+4. Claude can then use its own file-reading tools (e.g., `Read`) to fetch full files or larger ranges.
 
-#### Example Call
+### Example Call (conceptual)
 
 ```json
 {
   "codebase_path": "/home/user/app",
   "query": "database connection logic",
-  "max_results": 5,
-  "show_full_content": true
-}
-```
-
-### Tool 2: `get_file_content`
-
-Read the content of a specific file, optionally with a line range.
-
-#### Best For
-- Reading full file content after finding it via search
-- Getting more context around a specific line range
-- Viewing implementation details of a known file
-
-#### Parameters
-
-- `file_path` (required): Absolute path to the file to read.
-- `start_line` (optional): Starting line number (1-indexed).
-- `end_line` (optional): Ending line number (1-indexed, inclusive).
-
-#### Behavior
-
-1. Returns file content with line numbers prefixed to each line.
-2. If no line range is specified, returns the entire file.
-3. Invalid line numbers are clamped to valid ranges.
-
-#### Example Call
-
-```json
-{
-  "file_path": "/home/user/app/src/auth.py",
-  "start_line": 10,
-  "end_line": 50
+  "max_results": 5
 }
 ```
 
@@ -164,11 +127,48 @@ The MCP server shares configuration with the CLI via environment variables:
 | `CODE_RAG_RERANKER_MODEL` | Cross-encoder reranker model | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | `CODE_RAG_RERANKER_MULTIPLIER` | Retrieval multiplier before reranking | `2` |
 
+Note: The Code-RAG CLI uses these variables for embedding, chunking, batching,
+and reranking (for example, `CODE_RAG_EMBEDDING_MODEL`,
+`CODE_RAG_CHUNK_SIZE`, `CODE_RAG_BATCH_SIZE`, `CODE_RAG_RERANKER_ENABLED`,
+`CODE_RAG_RERANKER_MODEL`, and `CODE_RAG_RERANKER_MULTIPLIER`). The MCP
+server currently reads `CODE_RAG_DATABASE_PATH`, `CODE_RAG_CHUNK_SIZE`,
+`CODE_RAG_BATCH_SIZE`, and `CODE_RAG_RERANKER_MODEL`. The
+`CODE_RAG_DATABASE_TYPE` variable is defined for future use; at the moment the
+CLI selects the database via its `--database` flag and the MCP server always
+uses the Chroma backend.
+
+Examples when registering via CLI:
+
+```bash
+claude mcp add code-rag \
+  --type stdio \
+  --env CODE_RAG_DATABASE_TYPE=qdrant \
+  --env CODE_RAG_EMBEDDING_MODEL=text-embedding-3-small \
+  -- code-rag-mcp
+```
+
+To use OpenAI embeddings (CLI only):
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+claude mcp add code-rag \
+  --type stdio \
+  --env CODE_RAG_EMBEDDING_MODEL=text-embedding-3-small \
+  --env OPENAI_API_KEY=$OPENAI_API_KEY \
+  -- code-rag-mcp
+
+Note: The CLI respects `CODE_RAG_EMBEDDING_MODEL` and will switch to
+OpenAI embeddings when the name starts with `text-embedding-`. The MCP
+server currently always uses the default local sentence-transformers
+model, regardless of this variable.
+```
+
 ---
 
 ## Typical Workflows
 
-### Search and explore (new codebase)
+### Search a codebase (indexing happens automatically)
 
 1. User: "Find the database connection logic in `/home/user/myapp`."
 2. Claude calls:
@@ -176,37 +176,35 @@ The MCP server shares configuration with the CLI via environment variables:
 3. On first use, the MCP server silently indexes `/home/user/myapp`.
 4. Claude presents the top matches with file paths, line ranges, and short snippets.
 
-### Get more context after search
+### Locate where something is implemented
 
-1. Claude identifies a relevant file from search results: `src/db/connection.py`
+1. User: "Where is the user authentication implemented?"
 2. Claude calls:
-   - `get_file_content(file_path="/home/user/myapp/src/db/connection.py")`
-3. Claude can now see the full file context.
-
-### Read specific line range
-
-1. Search results show interesting code at lines 45-78
-2. Claude calls:
-   - `get_file_content(file_path="/home/user/myapp/src/db/connection.py", start_line=30, end_line=90)`
-3. Claude gets surrounding context around the matched code.
+   - `search_codebase(codebase_path="/home/user/myapp", query="user authentication implementation")`
+3. Claude returns locations such as:
+   - `src/auth/authenticator.py` (main authentication logic)
+   - `src/middleware/auth.py` (authentication middleware)
+4. If the user wants more context, Claude uses its own file-reading capability to show full files.
 
 ---
 
-## Design Notes
+## Design Notes and Future Direction
 
 ### API and MCP layering
 
-- `CodeRAGAPI` (`src/api.py`) provides a clean, reusable façade over the core Code-RAG pipeline.
+- `CodeRAGAPI` (`src/api.py`) provides a clean, reusable façade over the core Code-RAG pipeline (initialize collection, index, search, get chunks, stats, close).
 - `src/mcp_server.py` hosts the MCP server and exposes that API as tools for Claude over stdio.
-- `get_file_content` is a simple file reader that doesn't require the full API.
+- The same API can later back other interfaces (e.g., HTTP, gRPC) without changing core logic.
 
-### Two-tool design rationale
+### Single-tool, auto-indexing design (final)
 
-The two-tool interface addresses key feedback about the original single-tool design:
+The **single-tool interface** is the final intended surface for the MCP server:
 
-1. **Reduced follow-up reads**: Users can use `get_file_content` directly after search.
-2. **Better context depth**: The `show_full_content` parameter and line ranges provide more context.
-3. **Clear tool separation**: Semantic search for discovery, file reading for deep context.
+- Only `search_codebase` is exposed.
+- Indexing and low-level status become implementation details hidden behind that tool.
+- Typical workflow is: *search → (optionally) read full files using Claude's existing tools*.
+
+This keeps the MCP server focused on its unique value (semantic search) while relying on Claude's built-in capabilities for file reading and navigation.
 
 ---
 
