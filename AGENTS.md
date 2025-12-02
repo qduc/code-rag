@@ -64,9 +64,34 @@
 
 **When modifying**: Database/embedding initialization is centralized; new implementations require conditional instantiation logic here
 
+### 6. **MCP Server** (`src/mcp_server.py`)
+- **Purpose**: Exposes Code-RAG functionality as an MCP (Model Context Protocol) server that Claude and other AI assistants can connect to
+- **Core Responsibilities**:
+  - Implements MCP protocol via stdio transport for client-server communication
+  - Provides `search_codebase` tool for semantic code search
+  - Auto-indexes codebases transparently on first search (no user confirmation needed)
+  - Formats and returns search results with file paths, line numbers, and relevance scores
+- **Architecture**:
+  - Uses the CodeRAG API internally (shares same backend as CLI)
+  - Async-based using asyncio for non-blocking I/O
+  - Entry point: `code-rag-mcp` command (synchronous wrapper around async server)
+- **Key Design**:
+  - **Auto-indexing**: Automatically indexes codebases on first search without user intervention
+  - **Transparent**: Hides implementation details (collections, chunking strategy) from the AI client
+  - **Simple**: Single tool that "just works" - search is the only exposed operation
+  - **Silent progress**: No progress callbacks or validation prompts in MCP mode
+- **Entry Point Pattern**: The `main()` function is a synchronous wrapper that calls `asyncio.run(async_main())`, required for setuptools console_scripts compatibility
+
+**When modifying**:
+- The entry point MUST be synchronous (`def main()`) not async, as setuptools calls it directly
+- MCP tool schema changes require updating both the `list_tools()` handler and `call_tool()` implementation
+- Auto-indexing behavior is controlled via `validate_codebase=False` parameter to skip user prompts
+
 ## Developer Workflows
 
 ### Running the Tool
+
+#### CLI Mode
 ```bash
 # Install in development mode
 pip install -e .
@@ -82,6 +107,22 @@ code-rag --reindex
 
 # Use different embedding model
 code-rag --model sentence-transformers/paraphrase-MiniLM-L6-v2
+```
+
+#### MCP Server Mode
+```bash
+# Run the MCP server (typically called by MCP clients like Claude Desktop)
+code-rag-mcp
+
+# The server communicates via stdio and waits for JSON-RPC messages
+# Configure in your MCP client (e.g., Claude Desktop config):
+# {
+#   "mcpServers": {
+#     "code-rag": {
+#       "command": "/path/to/venv/bin/code-rag-mcp"
+#     }
+#   }
+# }
 ```
 
 ### Testing
@@ -100,6 +141,8 @@ flake8 src/
 - **Adjust chunking parameters**: Modify the chunking algorithm in the file processor (currently character-based with line-break awareness)
 - **New database**: Create a new database implementation class extending the database interface, then wire it into the CLI's initialization logic
 - **New embedding provider**: Create a new embedding implementation class extending the embedding interface, then wire it into the CLI's initialization logic
+- **Add MCP tools**: Define new tools in `list_tools()` and implement handlers in `call_tool()` in the MCP server
+- **IMPORTANT - MCP entry point**: If modifying async server code, remember the entry point pattern: `main()` must be synchronous and call `asyncio.run(async_main())`. Never make `main()` itself async, as setuptools cannot handle async entry points
 
 ## Project-Specific Patterns
 

@@ -185,8 +185,8 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
         return [TextContent(type="text", text=f"Error executing '{name}':\n{error_details}")]
 
 
-async def main():
-    """Run the MCP server."""
+async def async_main():
+    """Run the MCP server (async implementation)."""
     global api
 
     # Initialize the Code-RAG API
@@ -206,5 +206,10 @@ async def main():
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
+def main():
+    """Entry point for the MCP server (synchronous wrapper)."""
+    asyncio.run(async_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
