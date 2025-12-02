@@ -50,7 +50,7 @@ def read_file_content(
     try:
         content = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        # Fallback to latin-1 for binary-ish files
+        # Fallback to latin-1 for files with non-UTF-8 text encoding
         content = path.read_text(encoding="latin-1")
 
     lines = content.splitlines()
@@ -239,7 +239,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             path = Path(file_path)
             header = f"File: {file_path}\n"
             if start_line or end_line:
-                header += f"Lines: {start_line or 1}-{end_line or 'end'}\n"
+                # Show actual line range
+                actual_start = start_line or 1
+                actual_end = end_line or "EOF"
+                header += f"Lines: {actual_start}-{actual_end}\n"
             header += "-" * 60 + "\n"
             return [TextContent(type="text", text=header + content)]
         except FileNotFoundError as e:
