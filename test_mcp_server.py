@@ -24,6 +24,7 @@ import pytest
 from src.api import CodeRAGAPI
 from src.mcp_server import (
     format_search_results,
+    read_file_content,
     server,
     call_tool,
     list_tools,
@@ -278,6 +279,74 @@ class TestFormatSearchResults:
 
 
 # ============================================================================
+# Tests for read_file_content
+# ============================================================================
+
+
+class TestReadFileContent:
+    """Tests for the read_file_content function."""
+
+    def test_read_entire_file(self, temp_codebase):
+        """Test reading an entire file."""
+        file_path = Path(temp_codebase) / "src" / "auth.py"
+        content = read_file_content(str(file_path))
+
+        assert "def login" in content
+        assert "1." in content  # Line numbers should be present
+
+    def test_read_file_with_line_range(self, temp_codebase):
+        """Test reading a specific line range."""
+        file_path = Path(temp_codebase) / "src" / "auth.py"
+        content = read_file_content(str(file_path), start_line=2, end_line=5)
+
+        # Should have 4 lines (lines 2-5)
+        lines = content.strip().split("\n")
+        assert len(lines) == 4
+        # Line numbers should start with "2." (format is "   2." for 4-digit alignment)
+        assert "2." in lines[0]
+
+    def test_read_file_start_line_only(self, temp_codebase):
+        """Test reading from a start line to end of file."""
+        file_path = Path(temp_codebase) / "src" / "main.py"
+        content = read_file_content(str(file_path), start_line=5)
+
+        # Should start from line 5
+        assert "   5." in content
+
+    def test_read_file_end_line_only(self, temp_codebase):
+        """Test reading from beginning to an end line."""
+        file_path = Path(temp_codebase) / "src" / "main.py"
+        content = read_file_content(str(file_path), end_line=3)
+
+        # Should have 3 lines
+        lines = content.strip().split("\n")
+        assert len(lines) == 3
+
+    def test_read_file_not_found(self):
+        """Test that FileNotFoundError is raised for missing files."""
+        with pytest.raises(FileNotFoundError):
+            read_file_content("/nonexistent/file.py")
+
+    def test_read_directory_raises_error(self, temp_codebase):
+        """Test that ValueError is raised for directories."""
+        with pytest.raises(ValueError):
+            read_file_content(temp_codebase)
+
+    def test_read_file_clamps_invalid_line_numbers(self, temp_codebase):
+        """Test that invalid line numbers are clamped."""
+        file_path = Path(temp_codebase) / "src" / "auth.py"
+
+        # Start line too large should be clamped to last line
+        content = read_file_content(str(file_path), start_line=1000, end_line=1001)
+        lines = content.strip().split("\n")
+        assert len(lines) >= 1
+
+        # End line too large should be clamped to file length
+        content = read_file_content(str(file_path), start_line=1, end_line=1000)
+        assert "def login" in content
+
+
+# ============================================================================
 # Tests for list_tools
 # ============================================================================
 
@@ -286,24 +355,27 @@ class TestListTools:
     """Tests for the list_tools function."""
 
     @pytest.mark.asyncio
-    async def test_list_tools_returns_search_tool(self):
-        """Test that list_tools returns the search_codebase tool."""
+    async def test_list_tools_returns_both_tools(self):
+        """Test that list_tools returns both search_codebase and get_file_content tools."""
         tools = await list_tools()
 
-        assert len(tools) == 1
-        assert tools[0].name == "search_codebase"
+        assert len(tools) == 2
+        tool_names = [t.name for t in tools]
+        assert "search_codebase" in tool_names
+        assert "get_file_content" in tool_names
 
     @pytest.mark.asyncio
     async def test_search_tool_has_correct_schema(self):
         """Test that search_codebase tool has correct input schema."""
         tools = await list_tools()
-        tool = tools[0]
+        tool = next(t for t in tools if t.name == "search_codebase")
 
         schema = tool.inputSchema
         assert "properties" in schema
         assert "codebase_path" in schema["properties"]
         assert "query" in schema["properties"]
         assert "max_results" in schema["properties"]
+        assert "show_full_content" in schema["properties"]
 
         # Check required fields
         assert "codebase_path" in schema["required"]
@@ -313,11 +385,36 @@ class TestListTools:
     async def test_search_tool_description_present(self):
         """Test that search_codebase tool has a description."""
         tools = await list_tools()
-        tool = tools[0]
+        tool = next(t for t in tools if t.name == "search_codebase")
 
         assert tool.description is not None
         assert len(tool.description) > 0
         assert "natural language" in tool.description.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_file_content_tool_has_correct_schema(self):
+        """Test that get_file_content tool has correct input schema."""
+        tools = await list_tools()
+        tool = next(t for t in tools if t.name == "get_file_content")
+
+        schema = tool.inputSchema
+        assert "properties" in schema
+        assert "file_path" in schema["properties"]
+        assert "start_line" in schema["properties"]
+        assert "end_line" in schema["properties"]
+
+        # Check required fields
+        assert "file_path" in schema["required"]
+
+    @pytest.mark.asyncio
+    async def test_get_file_content_tool_description_present(self):
+        """Test that get_file_content tool has a description."""
+        tools = await list_tools()
+        tool = next(t for t in tools if t.name == "get_file_content")
+
+        assert tool.description is not None
+        assert len(tool.description) > 0
+        assert "file" in tool.description.lower()
 
 
 # ============================================================================
@@ -376,6 +473,76 @@ class TestCallToolValidation:
             # Check that search was called with max_results=20
             call_args = mock_api.search.call_args
             assert call_args[1]["n_results"] == 20
+
+    @pytest.mark.asyncio
+    async def test_call_tool_get_file_content_missing_path(self):
+        """Test that error is returned when file_path is missing for get_file_content."""
+        result = await call_tool("get_file_content", {})
+        assert len(result) == 1
+        assert "Error: 'file_path' is required" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_call_tool_get_file_content_nonexistent_file(self):
+        """Test that error is returned for nonexistent file."""
+        result = await call_tool(
+            "get_file_content", {"file_path": "/nonexistent/file.py"}
+        )
+        assert len(result) == 1
+        assert "Error" in result[0].text
+        assert "not found" in result[0].text.lower()
+
+
+# ============================================================================
+# Tests for call_tool - Get File Content Functionality
+# ============================================================================
+
+
+class TestCallToolGetFileContent:
+    """Tests for get_file_content functionality in call_tool."""
+
+    @pytest.mark.asyncio
+    async def test_get_file_content_success(self, temp_codebase):
+        """Test successful file content retrieval."""
+        file_path = Path(temp_codebase) / "src" / "auth.py"
+
+        result = await call_tool(
+            "get_file_content",
+            {"file_path": str(file_path)},
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "def login" in result[0].text
+        assert "File:" in result[0].text  # Header present
+
+    @pytest.mark.asyncio
+    async def test_get_file_content_with_line_range(self, temp_codebase):
+        """Test file content retrieval with line range."""
+        file_path = Path(temp_codebase) / "src" / "database.py"
+
+        result = await call_tool(
+            "get_file_content",
+            {
+                "file_path": str(file_path),
+                "start_line": 2,
+                "end_line": 5,
+            },
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Lines:" in result[0].text  # Range header present
+
+    @pytest.mark.asyncio
+    async def test_get_file_content_directory_error(self, temp_codebase):
+        """Test that error is returned for directory path."""
+        result = await call_tool(
+            "get_file_content",
+            {"file_path": temp_codebase},
+        )
+
+        assert len(result) == 1
+        assert "Error" in result[0].text
 
 
 # ============================================================================

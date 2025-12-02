@@ -6,14 +6,14 @@ Code-RAG functionality as tools that Claude can invoke.
 Design Philosophy:
 - Auto-indexing: Automatically index codebases on first search
 - Transparent: Hide implementation details (chunking, collections, etc.)
-- Simple: One main tool that "just works"
+- Simple: Focused tools that "just work"
+- Context-aware: Provide enough context to reduce follow-up reads
 """
 
 import asyncio
-import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -24,6 +24,57 @@ from .api import CodeRAGAPI
 
 # Global API instance
 api: Optional[CodeRAGAPI] = None
+
+
+def read_file_content(
+    file_path: str,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+) -> str:
+    """Read file content, optionally for a specific line range.
+
+    Args:
+        file_path: Path to the file to read
+        start_line: Optional starting line number (1-indexed)
+        end_line: Optional ending line number (1-indexed, inclusive)
+
+    Returns:
+        File content as a string, with line numbers prefixed
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {file_path}")
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # Fallback to latin-1 for binary-ish files
+        content = path.read_text(encoding="latin-1")
+
+    lines = content.splitlines()
+    total_lines = len(lines)
+
+    # Determine line range
+    if start_line is None:
+        start_line = 1
+    if end_line is None:
+        end_line = total_lines
+
+    # Validate and clamp line numbers
+    start_line = max(1, min(start_line, total_lines))
+    end_line = max(start_line, min(end_line, total_lines))
+
+    # Extract the requested range (convert to 0-indexed)
+    selected_lines = lines[start_line - 1 : end_line]
+
+    # Format with line numbers
+    output_lines = []
+    for i, line in enumerate(selected_lines, start=start_line):
+        output_lines.append(f"{i:4d}. {line}")
+
+    return "\n".join(output_lines)
 
 
 def format_search_results(results: List[Dict[str, Any]], show_full_content: bool = False) -> str:
@@ -76,31 +127,31 @@ server = Server("code-rag")
 async def list_tools() -> list[Tool]:
     """List available Code-RAG tools.
 
-    Philosophy: One tool, does one thing well - semantic code search.
-    Everything else (reading files, etc.) Claude already has tools for.
+    Philosophy:
+    - search_codebase: Semantic search for discovering functionality
+    - get_file_content: Read specific files or line ranges for deep context
     """
     return [
         Tool(
             name="search_codebase",
             description=(
                 "Search for code in a codebase using natural language queries. "
-                "Automatically indexes the codebase on first use (transparent to you). "
+                "Automatically indexes the codebase on first use. "
                 "\n\n"
-                "Use this when you need to:\n"
-                "- Find where specific functionality is implemented\n"
-                "- Locate code patterns or examples\n"
-                "- Understand how a feature works\n"
-                "- Search for error handling, API calls, database logic, etc.\n"
+                "BEST FOR:\n"
+                "- Discovering where functionality is implemented\n"
+                "- Finding code patterns or examples you don't know the location of\n"
+                "- Understanding how features work across the codebase\n"
+                "- Exploratory searches ('how does X work?')\n"
                 "\n"
                 "Example queries:\n"
                 "- 'authentication and login logic'\n"
                 "- 'database connection setup'\n"
                 "- 'error handling for API requests'\n"
-                "- 'user registration implementation'\n"
-                "- 'how files are uploaded'\n"
                 "\n"
-                "Returns: Relevant code snippets with file paths and line numbers. "
-                "You can then use the Read tool to see full file contents if needed."
+                "Returns: Relevant code snippets with file paths and line numbers.\n"
+                "TIP: Use show_full_content=true for more context, or use "
+                "get_file_content to read full files after finding them."
             ),
             inputSchema={
                 "type": "object",
@@ -118,8 +169,45 @@ async def list_tools() -> list[Tool]:
                         "description": "Maximum number of results to return (default: 5, max: 20)",
                         "default": 5,
                     },
+                    "show_full_content": {
+                        "type": "boolean",
+                        "description": "If true, show full chunk content without truncation (default: false)",
+                        "default": False,
+                    },
                 },
                 "required": ["codebase_path", "query"],
+            },
+        ),
+        Tool(
+            name="get_file_content",
+            description=(
+                "Read the content of a specific file, optionally with a line range. "
+                "Use this after search_codebase to get full context around a match.\n\n"
+                "BEST FOR:\n"
+                "- Reading full file content after finding it via search\n"
+                "- Getting more context around a specific line range\n"
+                "- Viewing implementation details of a known file\n"
+                "\n"
+                "Returns: File content with line numbers.\n"
+                "TIP: When you know the exact file path, this is faster than search."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to the file to read",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Starting line number (1-indexed, optional)",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Ending line number (1-indexed, inclusive, optional)",
+                    },
+                },
+                "required": ["file_path"],
             },
         ),
     ]
@@ -136,6 +224,31 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
     """
     global api
 
+    if name == "get_file_content":
+        # Handle get_file_content separately - doesn't need API
+        file_path = arguments.get("file_path")
+        start_line = arguments.get("start_line")
+        end_line = arguments.get("end_line")
+
+        if not file_path:
+            return [TextContent(type="text", text="Error: 'file_path' is required")]
+
+        try:
+            content = read_file_content(file_path, start_line, end_line)
+            # Add header with file info
+            path = Path(file_path)
+            header = f"File: {file_path}\n"
+            if start_line or end_line:
+                header += f"Lines: {start_line or 1}-{end_line or 'end'}\n"
+            header += "-" * 60 + "\n"
+            return [TextContent(type="text", text=header + content)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error reading file: {e}")]
+
     if api is None:
         return [
             TextContent(
@@ -149,6 +262,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             codebase_path = arguments.get("codebase_path")
             query = arguments.get("query")
             max_results = min(arguments.get("max_results", 5), 20)  # Cap at 20
+            show_full_content = arguments.get("show_full_content", False)
 
             if not codebase_path:
                 return [TextContent(type="text", text="Error: 'codebase_path' is required")]
@@ -173,7 +287,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             results = api.search(query, n_results=max_results, collection_name="codebase")
 
             # Format and return results
-            formatted = format_search_results(results, show_full_content=False)
+            formatted = format_search_results(results, show_full_content=show_full_content)
             return [TextContent(type="text", text=formatted)]
 
         else:
