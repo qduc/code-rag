@@ -8,6 +8,38 @@ from typing import List, Dict, Any, Optional, Set
 from .syntax_chunker import SyntaxChunker
 
 
+# Patterns for test files that can be optionally excluded
+TEST_FILE_PATTERNS = [
+    "test_*.py",
+    "*_test.py",
+    "*_test.go",
+    "*_test.js",
+    "*_test.ts",
+    "*.spec.js",
+    "*.spec.ts",
+    "*.test.js",
+    "*.test.ts",
+    "*.test.jsx",
+    "*.test.tsx",
+    "Test*.java",
+    "*Test.java",
+    "*Tests.java",
+    "*_test.rb",
+    "test_*.rb",
+    "*_spec.rb",
+]
+
+# Patterns for test directories
+TEST_DIR_PATTERNS = [
+    "test",
+    "tests",
+    "testing",
+    "__tests__",
+    "spec",
+    "specs",
+]
+
+
 def byte_offset_to_line_number(content: str, byte_offset: int) -> int:
     """
     Convert a byte offset to a line number.
@@ -61,16 +93,30 @@ class FileProcessor:
         ".cs": "c_sharp",
     }
 
-    def __init__(self, ignore_patterns: List[str] = None):
+    def __init__(
+        self,
+        ignore_patterns: List[str] = None,
+        exclude_tests: bool = False,
+        overlap_size: int = 100,
+        include_file_header: bool = True,
+    ):
         """
         Initialize the file processor.
 
         Args:
             ignore_patterns: List of patterns to ignore during file discovery
+            exclude_tests: Whether to exclude test files from processing
+            overlap_size: Number of characters to overlap between chunks
+            include_file_header: Whether to include file headers in chunks
         """
         self.ignore_patterns = ignore_patterns or self._default_ignore_patterns()
+        self.exclude_tests = exclude_tests
+        self.overlap_size = overlap_size
+        self.include_file_header = include_file_header
         self._gitignore_patterns: Set[str] = set()
-        self.syntax_chunker = SyntaxChunker()
+        self.syntax_chunker = SyntaxChunker(
+            overlap=overlap_size, include_file_header=include_file_header
+        )
 
     def _default_ignore_patterns(self) -> List[str]:
         """Return default patterns to ignore."""
@@ -164,6 +210,31 @@ class FileProcessor:
 
         return False
 
+    def _is_test_file(self, path: Path) -> bool:
+        """
+        Check if a file is a test file based on common naming patterns.
+
+        Args:
+            path: Path to the file
+
+        Returns:
+            True if it's a test file
+        """
+        filename = path.name
+
+        # Check test file patterns
+        for pattern in TEST_FILE_PATTERNS:
+            if fnmatch.fnmatch(filename, pattern):
+                return True
+
+        # Check if in a test directory
+        for part in path.parts:
+            for dir_pattern in TEST_DIR_PATTERNS:
+                if part.lower() == dir_pattern:
+                    return True
+
+        return False
+
     def _is_source_file(self, path: Path) -> bool:
         """
         Check if a file is a source code file.
@@ -210,12 +281,23 @@ class FileProcessor:
                 if not self._should_ignore(current_dir / d, root)
             ]
 
+            # Optionally filter out test directories
+            if self.exclude_tests:
+                dirnames[:] = [
+                    d for d in dirnames
+                    if d.lower() not in TEST_DIR_PATTERNS
+                ]
+
             # Process files
             for filename in filenames:
                 file_path = current_dir / filename
 
                 # Skip ignored files
                 if self._should_ignore(file_path, root):
+                    continue
+
+                # Optionally skip test files
+                if self.exclude_tests and self._is_test_file(file_path):
                     continue
 
                 # Only include source files
@@ -254,7 +336,7 @@ class FileProcessor:
         self,
         content: str,
         chunk_size: int = 1024,
-        overlap: int = 100,
+        overlap: int = None,
     ) -> List[str]:
         """
         Split file content into chunks with optional overlap.
@@ -264,11 +346,14 @@ class FileProcessor:
         Args:
             content: File content to chunk
             chunk_size: Target size of each chunk in characters
-            overlap: Number of characters to overlap between chunks
+            overlap: Number of characters to overlap between chunks (uses instance default if None)
 
         Returns:
             List of chunks
         """
+        if overlap is None:
+            overlap = self.overlap_size
+
         if not content:
             return []
 
@@ -336,9 +421,11 @@ class FileProcessor:
 
         # Fallback to basic chunking if syntax chunking failed or not supported
         if not chunks:
-            chunks = self.chunk_file(content, chunk_size)
+            chunks = self.chunk_file(content, chunk_size, self.overlap_size)
 
         result = []
+        total_chunks = len(chunks)
+
         for i, chunk in enumerate(chunks):
             # Handle both dict (from syntax chunker) and str (from basic chunker)
             if isinstance(chunk, dict):
@@ -362,11 +449,14 @@ class FileProcessor:
             metadata = {
                 "file_path": file_path,
                 "chunk_index": i,
-                "total_chunks": len(chunks),
+                "total_chunks": total_chunks,
                 "start_line": start_line,
                 "end_line": end_line,
                 "start_byte": start_byte,
                 "end_byte": end_byte,
+                # Adjacency metadata for chunk traversal
+                "prev_id": i - 1 if i > 0 else -1,  # -1 indicates no previous
+                "next_id": i + 1 if i < total_chunks - 1 else -1,  # -1 indicates no next
             }
 
             # Add AST metadata if available (from syntax chunker)
@@ -377,6 +467,12 @@ class FileProcessor:
                     metadata["class_name"] = chunk["class_name"]
                 if "symbol_type" in chunk:
                     metadata["symbol_type"] = chunk["symbol_type"]
+                if chunk.get("has_file_header"):
+                    metadata["has_file_header"] = True
+                if chunk.get("is_continuation"):
+                    metadata["is_continuation"] = True
+                if chunk.get("has_signature_context"):
+                    metadata["has_signature_context"] = True
 
             result.append({
                 "id": f"{file_path}:chunk_{i}",

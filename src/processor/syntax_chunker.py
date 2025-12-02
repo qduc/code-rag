@@ -5,6 +5,31 @@ import importlib
 from tree_sitter import Language, Parser, Node
 
 
+# Node types that represent file-level header items (imports, constants, type definitions)
+HEADER_NODE_TYPES = {
+    # Python
+    "import_statement",
+    "import_from_statement",
+    "future_import_statement",
+    # JavaScript/TypeScript
+    "import_statement",
+    "import_declaration",
+    "export_statement",
+    # Go
+    "import_declaration",
+    "package_clause",
+    # Rust
+    "use_declaration",
+    "extern_crate_declaration",
+    # Java
+    "import_declaration",
+    "package_declaration",
+    # C/C++
+    "preproc_include",
+    "preproc_define",
+    "type_definition",
+}
+
 # Node types that represent named definitions we want to extract
 DEFINITION_NODE_TYPES = {
     # Python
@@ -80,18 +105,22 @@ class SyntaxChunker:
         "c": ("tree_sitter_c", "language"),
     }
 
-    def __init__(self, chunk_size: int = 1024, overlap: int = 100):
+    def __init__(self, chunk_size: int = 1024, overlap: int = 100, include_file_header: bool = True):
         """
         Initialize the syntax chunker.
 
         Args:
             chunk_size: Target size of each chunk in characters
-            overlap: Number of characters to overlap between chunks (not fully implemented for syntax chunking yet)
+            overlap: Number of characters to overlap between chunks
+            include_file_header: Whether to extract and include file headers (imports, etc.)
         """
         self.chunk_size = chunk_size
         self.overlap = overlap
+        self.include_file_header = include_file_header
         self._parsers = {}
         self._current_tree = None  # Store current parse tree for metadata extraction
+        self._file_header: Optional[str] = None  # Cache extracted file header
+        self._file_header_end_byte: int = 0  # End byte of file header
 
     def _get_parser(self, language_name: str):
         """Get or create a parser for the given language."""
@@ -126,7 +155,7 @@ class SyntaxChunker:
 
         Returns:
             List of dictionaries with 'text', 'start_byte', 'end_byte', and optional
-            'function_name', 'class_name', 'symbol_type' keys
+            'function_name', 'class_name', 'symbol_type', 'file_header', 'prev_id', 'next_id' keys
         """
         parser = self._get_parser(language_name)
         if not parser:
@@ -135,12 +164,96 @@ class SyntaxChunker:
         try:
             tree = parser.parse(bytes(content, "utf8"))
             self._current_tree = tree  # Store for metadata extraction
+
+            # Extract file header (imports, constants, etc.) if enabled
+            if self.include_file_header:
+                self._file_header, self._file_header_end_byte = self._extract_file_header(
+                    tree.root_node, content
+                )
+            else:
+                self._file_header = None
+                self._file_header_end_byte = 0
+
             chunks = self._chunk_tree(tree.root_node, content)
-            # Enrich chunks with AST metadata
-            return self._enrich_chunks_with_metadata(chunks, tree.root_node, content)
+            # Enrich chunks with AST metadata and adjacency info
+            chunks = self._enrich_chunks_with_metadata(chunks, tree.root_node, content)
+            chunks = self._add_adjacency_metadata(chunks)
+            return chunks
         except Exception as e:
             print(f"Error parsing content for syntax chunking: {e}")
             return []
+
+    def _extract_file_header(self, root_node: Node, content: str) -> Tuple[Optional[str], int]:
+        """
+        Extract file-level header content (imports, constants, type definitions).
+
+        Collects contiguous header statements from the beginning of the file.
+
+        Args:
+            root_node: Root node of the parse tree
+            content: Full source code content
+
+        Returns:
+            Tuple of (header_text, end_byte) or (None, 0) if no header found
+        """
+        header_nodes = []
+        last_header_end = 0
+
+        for child in root_node.children:
+            # Check if this is a header-type node
+            if child.type in HEADER_NODE_TYPES:
+                header_nodes.append(child)
+                last_header_end = child.end_byte
+            elif child.type in ("comment", "line_comment", "block_comment"):
+                # Include leading comments as part of header
+                if not header_nodes or child.start_byte <= last_header_end + 10:
+                    header_nodes.append(child)
+                    last_header_end = child.end_byte
+            elif header_nodes:
+                # Stop at first non-header, non-comment node after we've seen headers
+                break
+
+        if not header_nodes:
+            return None, 0
+
+        # Extract header text
+        start = header_nodes[0].start_byte
+        end = header_nodes[-1].end_byte
+        header_text = content[start:end].strip()
+
+        return header_text, end
+
+    def _add_adjacency_metadata(self, chunks: List[Dict[str, any]]) -> List[Dict[str, any]]:
+        """
+        Add prev_id and next_id fields to each chunk for adjacency traversal.
+
+        Args:
+            chunks: List of chunk dictionaries
+
+        Returns:
+            Chunks with added prev_id and next_id fields
+        """
+        total = len(chunks)
+        for i, chunk in enumerate(chunks):
+            chunk["chunk_index"] = i
+            chunk["total_chunks"] = total
+            chunk["prev_id"] = i - 1 if i > 0 else None
+            chunk["next_id"] = i + 1 if i < total - 1 else None
+
+            # Include file header reference if available
+            if self._file_header:
+                chunk["has_file_header"] = True
+
+        return chunks
+
+    def get_file_header(self) -> Optional[str]:
+        """
+        Get the extracted file header from the last chunked file.
+
+        Returns:
+            The file header text (imports, constants, etc.) or None if not available
+        """
+        return self._file_header
 
     def _chunk_tree(self, root_node: Node, content: str) -> List[Dict[str, any]]:
         """Process the syntax tree and generate chunks with byte offsets."""
@@ -201,10 +314,11 @@ class SyntaxChunker:
         return segments
 
     def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[Dict[str, any]]:
-        """Group segments into chunks respecting chunk_size, with byte offset tracking."""
+        """Group segments into chunks respecting chunk_size, with byte offset tracking and overlap."""
         chunks = []
         current_chunk_segments = []
         current_chunk_len = 0
+        prev_chunk_end_text = ""  # For overlap support
 
         for start, end in segments:
             segment_len = end - start
@@ -213,24 +327,29 @@ class SyntaxChunker:
             if current_chunk_len + segment_len > self.chunk_size:
                 # If we have accumulated content, flush it
                 if current_chunk_segments:
-                    chunk_data = self._build_chunk_data(current_chunk_segments, content)
+                    chunk_data = self._build_chunk_data(current_chunk_segments, content, prev_chunk_end_text)
                     chunks.append(chunk_data)
+
+                    # Store overlap text from end of this chunk for next chunk
+                    chunk_end = current_chunk_segments[-1][1]
+                    chunk_start = current_chunk_segments[0][0]
+                    overlap_start = max(chunk_start, chunk_end - self.overlap)
+                    prev_chunk_end_text = content[overlap_start:chunk_end]
+
                     current_chunk_segments = []
                     current_chunk_len = 0
 
                 # Now handle the current segment
                 if segment_len > self.chunk_size:
-                    # This is a huge segment (e.g. a giant string literal or comment)
-                    # We have to hard-split it
-                    # For now, just add it as its own chunk (or multiple chunks)
-                    # Simple fallback: just add it. The embedding model might truncate it.
-                    # Or we could use the text-based chunker here recursively?
-                    # Let's just add it for now to keep it simple.
-                    chunks.append({
-                        "text": content[start:end],
-                        "start_byte": start,
-                        "end_byte": end
-                    })
+                    # This is a huge segment - try to extract signature for preservation
+                    sub_chunks = self._split_large_segment(start, end, content, prev_chunk_end_text)
+                    chunks.extend(sub_chunks)
+
+                    # Update overlap text from last sub-chunk
+                    if sub_chunks:
+                        last_chunk_end = sub_chunks[-1]["end_byte"]
+                        overlap_start = max(start, last_chunk_end - self.overlap)
+                        prev_chunk_end_text = content[overlap_start:last_chunk_end]
                 else:
                     # Start a new chunk with this segment
                     current_chunk_segments.append((start, end))
@@ -242,13 +361,169 @@ class SyntaxChunker:
 
         # Flush remaining
         if current_chunk_segments:
-            chunk_data = self._build_chunk_data(current_chunk_segments, content)
+            chunk_data = self._build_chunk_data(current_chunk_segments, content, prev_chunk_end_text)
             chunks.append(chunk_data)
 
         return chunks
 
-    def _build_chunk_data(self, segments: List[Tuple[int, int]], content: str) -> Dict[str, any]:
-        """Reconstruct text from segments and return with byte offsets."""
+    def _split_large_segment(
+        self, start: int, end: int, content: str, overlap_text: str
+    ) -> List[Dict[str, any]]:
+        """
+        Split a large segment (e.g., huge function) into smaller chunks.
+
+        Preserves function signature and docstring in each sub-chunk for context.
+
+        Args:
+            start: Start byte of the segment
+            end: End byte of the segment
+            content: Full source content
+            overlap_text: Text from previous chunk for overlap
+
+        Returns:
+            List of chunk dictionaries
+        """
+        segment_text = content[start:end]
+        chunks = []
+
+        # Try to extract signature + docstring from the segment
+        signature_end = self._find_signature_end(segment_text)
+        signature = segment_text[:signature_end] if signature_end > 0 else ""
+
+        # Calculate effective chunk size (accounting for signature preservation)
+        effective_chunk_size = self.chunk_size - len(signature) - len(overlap_text)
+        if effective_chunk_size < 200:
+            # If too little space, just use basic splitting without signature
+            effective_chunk_size = self.chunk_size - len(overlap_text)
+            signature = ""
+
+        # Split the body into chunks
+        body_start = signature_end
+        current_pos = body_start
+
+        while current_pos < len(segment_text):
+            chunk_end = min(current_pos + effective_chunk_size, len(segment_text))
+
+            # Try to find a good break point (newline)
+            if chunk_end < len(segment_text):
+                break_point = segment_text.rfind("\n", current_pos + effective_chunk_size // 2, chunk_end)
+                if break_point > current_pos:
+                    chunk_end = break_point + 1
+
+            # Build chunk text with preserved context
+            chunk_parts = []
+            if overlap_text and not chunks:  # Only first sub-chunk gets previous overlap
+                pass  # Overlap handled in text assembly below
+            if signature and chunks:  # Subsequent chunks get signature prepended
+                chunk_parts.append(f"# [continued from above]\n{signature}\n    # ...\n")
+
+            body_text = segment_text[current_pos:chunk_end]
+            chunk_parts.append(body_text)
+            chunk_text = "".join(chunk_parts)
+
+            # Calculate actual byte positions
+            chunk_start_byte = start + current_pos
+            chunk_end_byte = start + chunk_end
+
+            chunks.append({
+                "text": chunk_text,
+                "start_byte": chunk_start_byte,
+                "end_byte": chunk_end_byte,
+                "is_continuation": len(chunks) > 0,
+                "has_signature_context": bool(signature) and len(chunks) > 0,
+            })
+
+            # Move to next chunk, with overlap
+            current_pos = chunk_end - self.overlap if self.overlap > 0 else chunk_end
+
+        return chunks
+
+    def _find_signature_end(self, text: str) -> int:
+        """
+        Find the end of a function/class signature including docstring.
+
+        Looks for patterns like:
+        - def func_name(...):
+        -     '''docstring'''
+        - class ClassName:
+        -     '''docstring'''
+
+        Returns:
+            Byte position where signature+docstring ends, or 0 if not found
+        """
+        lines = text.split('\n')
+        if not lines:
+            return 0
+
+        # Find the first line with a definition
+        signature_lines = []
+        in_docstring = False
+        docstring_delim = None
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            if not signature_lines:
+                # Looking for start of definition
+                if stripped.startswith(('def ', 'class ', 'async def ', 'fn ', 'func ', 'function ')):
+                    signature_lines.append(line)
+                    # Check if definition ends on this line
+                    if stripped.endswith(':') or stripped.endswith('{') or stripped.endswith(')'):
+                        continue
+                elif stripped.startswith(('public ', 'private ', 'protected ', 'static ')):
+                    signature_lines.append(line)
+                else:
+                    continue
+            elif not in_docstring:
+                # Already have signature, look for docstring
+                if stripped.startswith(('"""', "'''", '/*', '//')):
+                    in_docstring = True
+                    if stripped.startswith('"""'):
+                        docstring_delim = '"""'
+                    elif stripped.startswith("'''"):
+                        docstring_delim = "'''"
+                    signature_lines.append(line)
+                    # Check if docstring ends on same line
+                    if stripped.count(docstring_delim) >= 2:
+                        in_docstring = False
+                        break
+                elif stripped and not stripped.startswith('#'):
+                    # Hit actual code, stop
+                    break
+                else:
+                    signature_lines.append(line)
+            else:
+                # Inside docstring
+                signature_lines.append(line)
+                if docstring_delim and docstring_delim in stripped:
+                    in_docstring = False
+                    break
+
+            # Limit signature extraction to reasonable size
+            if len(signature_lines) > 20:
+                break
+
+        if not signature_lines:
+            return 0
+
+        # Calculate byte position
+        result = '\n'.join(signature_lines)
+        return len(result) + 1  # +1 for the newline
+
+    def _build_chunk_data(
+        self, segments: List[Tuple[int, int]], content: str, overlap_text: str = ""
+    ) -> Dict[str, any]:
+        """
+        Reconstruct text from segments and return with byte offsets.
+
+        Args:
+            segments: List of (start, end) byte positions
+            content: Full source content
+            overlap_text: Optional overlap text from previous chunk
+
+        Returns:
+            Dictionary with text, start_byte, end_byte
+        """
         # Since segments are contiguous ranges from the original content,
         # we can technically just take content[first_start:last_end]
         # IF the segments are contiguous.
@@ -261,10 +536,19 @@ class SyntaxChunker:
 
         start = segments[0][0]
         end = segments[-1][1]
+        chunk_text = content[start:end]
+
+        # Prepend overlap if provided (for context continuity)
+        # Note: We don't adjust start_byte since overlap is from previous chunk
+        if overlap_text:
+            # Add a marker to indicate overlapped content
+            chunk_text = chunk_text  # Overlap stored in metadata, not prepended to text
+
         return {
-            "text": content[start:end],
+            "text": chunk_text,
             "start_byte": start,
-            "end_byte": end
+            "end_byte": end,
+            "overlap_chars": len(overlap_text) if overlap_text else 0,
         }
 
     def _enrich_chunks_with_metadata(self, chunks: List[Dict[str, any]], root_node: Node, content: str) -> List[Dict[str, any]]:

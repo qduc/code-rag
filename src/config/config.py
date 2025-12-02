@@ -24,6 +24,11 @@ class Config:
         self.chunk_size = int(os.getenv("CODE_RAG_CHUNK_SIZE", "1024"))
         self.batch_size = int(os.getenv("CODE_RAG_BATCH_SIZE", "32"))
 
+        # Chunking configuration
+        self.overlap_size = int(os.getenv("CODE_RAG_OVERLAP_SIZE", "100"))
+        self.include_file_header = os.getenv("CODE_RAG_INCLUDE_FILE_HEADER", "true").lower() in ("true", "1", "yes")
+        self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in ("true", "1", "yes")
+
         # Reranker configuration
         self.reranker_enabled = os.getenv("CODE_RAG_RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
         self.reranker_model = os.getenv("CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
@@ -77,3 +82,15 @@ class Config:
     def get_reranker_multiplier(self) -> int:
         """Get the retrieval multiplier for reranking."""
         return self.reranker_multiplier
+
+    def get_overlap_size(self) -> int:
+        """Get the configured overlap size for chunks."""
+        return self.overlap_size
+
+    def should_include_file_header(self) -> bool:
+        """Get whether to include file headers in chunks."""
+        return self.include_file_header
+
+    def should_exclude_tests(self) -> bool:
+        """Get whether to exclude test files from indexing."""
+        return self.exclude_tests
