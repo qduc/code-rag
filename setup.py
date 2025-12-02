@@ -22,6 +22,7 @@ setup(
         "sentence-transformers>=2.2.0",
         "openai>=1.50.0",
         "python-dotenv>=0.21.0",
+        "mcp>=0.9.0",
         "tree-sitter>=0.22.0",
         "tree-sitter-python>=0.21.0",
         "tree-sitter-javascript>=0.21.0",
@@ -35,6 +36,7 @@ setup(
     entry_points={
         "console_scripts": [
             "code-rag=src.main:main",
+            "code-rag-mcp=src.mcp_server:main",
         ],
     },
     classifiers=[
