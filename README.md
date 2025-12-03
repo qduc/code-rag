@@ -47,25 +47,6 @@ class Authenticator:
 - **Refactoring aid** - Locate all code related to a feature you're changing
 - **Documentation** - Extract context for writing docs or onboarding
 
-## Basic Usage
-
-```bash
-# Different codebase
-code-rag --path /path/to/repo
-
-# Force reindex
-code-rag --reindex
-
-# More results
-code-rag --results 10
-
-# Different embedding model (better for code)
-code-rag --model text-embedding-3-small # need to set OPENAI_API_KEY env
-
-# Use Qdrant instead of ChromaDB
-code-rag --database qdrant
-```
-
 ## Use with Claude Code (MCP Integration)
 
 Code-RAG works as an MCP server, letting Claude automatically search your codebase during conversations.
@@ -84,6 +65,25 @@ Claude: [Automatically searches and finds the code]
 ```
 
 See [MCP_SETUP.md](MCP_SETUP.md) for detailed setup.
+
+## Basic Usage
+
+```bash
+# Different codebase
+code-rag --path /path/to/repo
+
+# Force reindex
+code-rag --reindex
+
+# More results
+code-rag --results 10
+
+# Different embedding model (better for code)
+code-rag --model text-embedding-3-small # need to set OPENAI_API_KEY env
+
+# Use Qdrant instead of ChromaDB
+code-rag --database qdrant
+```
 
 ## Configuration
 
@@ -173,7 +173,7 @@ See [AGENTS.md](AGENTS.md) for architecture and [IMPLEMENTATION.md](IMPLEMENTATI
 
 ## License
 
-[Add your license]
+MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
