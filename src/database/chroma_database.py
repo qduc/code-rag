@@ -173,6 +173,76 @@ class ChromaDatabase(DatabaseInterface):
         """
         return self.count() > 0
 
+    def delete_by_ids(self, ids: List[str]) -> None:
+        """
+        Delete documents by their IDs.
+
+        Args:
+            ids: List of document IDs to delete
+        """
+        if self.collection is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        if not ids:
+            return
+
+        try:
+            self.collection.delete(ids=ids)
+        except Exception as e:
+            print(f"Error deleting documents: {e}")
+            raise
+
+    def get_all_ids(self) -> List[str]:
+        """
+        Get all document IDs in the collection.
+
+        Returns:
+            List of all document IDs
+        """
+        if self.collection is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        try:
+            # Get all documents with just IDs
+            results = self.collection.get(include=[])
+            return results.get("ids", [])
+        except Exception as e:
+            print(f"Error getting all IDs: {e}")
+            return []
+
+    def get_ids_by_file(self, file_path: str) -> List[str]:
+        """
+        Get all document IDs for a specific file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            List of document IDs for that file
+        """
+        if self.collection is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        try:
+            # Try using where clause to filter by file_path
+            results = self.collection.get(
+                where={"file_path": file_path},
+                include=[]
+            )
+            return results.get("ids", [])
+        except Exception:
+            # ChromaDB might not support this where clause, fallback to manual filter
+            try:
+                all_results = self.collection.get(include=["metadatas"])
+                ids = []
+                for i, metadata in enumerate(all_results.get("metadatas", [])):
+                    if metadata.get("file_path") == file_path:
+                        ids.append(all_results["ids"][i])
+                return ids
+            except Exception as e:
+                print(f"Error getting IDs by file: {e}")
+                return []
+
     def delete_collection(self, collection_name: str) -> None:
         """
         Delete a collection from the database.

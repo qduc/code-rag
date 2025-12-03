@@ -82,6 +82,39 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
+    def delete_by_ids(self, ids: List[str]) -> None:
+        """
+        Delete documents by their IDs.
+
+        Args:
+            ids: List of document IDs to delete
+        """
+        pass
+
+    @abstractmethod
+    def get_all_ids(self) -> List[str]:
+        """
+        Get all document IDs in the collection.
+
+        Returns:
+            List of all document IDs
+        """
+        pass
+
+    @abstractmethod
+    def get_ids_by_file(self, file_path: str) -> List[str]:
+        """
+        Get all document IDs for a specific file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            List of document IDs for that file
+        """
+        pass
+
+    @abstractmethod
     def close(self) -> None:
         """Close the database connection."""
         pass

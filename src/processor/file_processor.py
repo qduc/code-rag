@@ -2,6 +2,7 @@
 
 import os
 import fnmatch
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 
@@ -483,3 +484,43 @@ class FileProcessor:
             })
 
         return result
+
+    def get_file_stats(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Get file statistics (mtime, size).
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Dict with 'mtime' and 'size', or None on error
+        """
+        try:
+            stat = os.stat(file_path)
+            return {
+                'mtime': stat.st_mtime,
+                'size': stat.st_size
+            }
+        except OSError as e:
+            print(f"Error getting stats for {file_path}: {e}")
+            return None
+
+    def compute_file_hash(self, file_path: str) -> Optional[str]:
+        """
+        Compute SHA256 hash of file content.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Hex digest of file hash, or None on error
+        """
+        try:
+            hasher = hashlib.sha256()
+            with open(file_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception as e:
+            print(f"Error computing hash for {file_path}: {e}")
+            return None

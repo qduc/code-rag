@@ -5,7 +5,7 @@ import json
 from typing import List, Dict, Any, Optional
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, PointIdsList, Filter, FieldCondition, MatchValue
 
 from .database_interface import DatabaseInterface
 
@@ -256,6 +256,86 @@ class QdrantDatabase(DatabaseInterface):
             True if documents exist in the collection
         """
         return self.count() > 0
+
+    def delete_by_ids(self, ids: List[str]) -> None:
+        """
+        Delete documents by their IDs.
+
+        Args:
+            ids: List of document IDs to delete
+        """
+        if self.collection_name is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        if not ids:
+            return
+
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=PointIdsList(points=ids),
+                wait=True
+            )
+        except Exception as e:
+            print(f"Error deleting points: {e}")
+            raise
+
+    def get_all_ids(self) -> List[str]:
+        """
+        Get all document IDs in the collection.
+
+        Returns:
+            List of all document IDs
+        """
+        if self.collection_name is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        try:
+            # Use scroll to get all points
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=10000,  # Adjust based on expected collection size
+                with_payload=False,
+                with_vectors=False
+            )
+            return [str(point.id) for point in points]
+        except Exception as e:
+            print(f"Error getting all IDs: {e}")
+            return []
+
+    def get_ids_by_file(self, file_path: str) -> List[str]:
+        """
+        Get all document IDs for a specific file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            List of document IDs for that file
+        """
+        if self.collection_name is None:
+            raise RuntimeError("Collection not initialized. Call initialize() first.")
+
+        try:
+            # Use scroll with filter
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="file_path",
+                            match=MatchValue(value=file_path)
+                        )
+                    ]
+                ),
+                limit=10000,
+                with_payload=False,
+                with_vectors=False
+            )
+            return [str(point.id) for point in points]
+        except Exception as e:
+            print(f"Error getting IDs by file: {e}")
+            return []
 
     def delete_collection(self, collection_name: str) -> None:
         """

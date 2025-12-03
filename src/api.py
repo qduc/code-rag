@@ -5,8 +5,10 @@ that can be used by MCP servers, CLI tools, or other integrations.
 """
 
 import hashlib
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Set, Callable
+from datetime import datetime
 from .config.config import Config
 from .database.chroma_database import ChromaDatabase
 from .database.qdrant_database import QdrantDatabase
@@ -17,6 +19,7 @@ from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedd
 from .processor.file_processor import FileProcessor
 from .reranker.reranker_interface import RerankerInterface
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
+from .index.metadata_index import MetadataIndex, FileMetadata
 
 
 def generate_collection_name(codebase_path: str) -> str:
@@ -113,6 +116,8 @@ class CodeRAGAPI:
         self._indexed_paths: Set[str] = set()
         # Track the currently active collection name
         self._active_collection: Optional[str] = None
+        # Metadata index for incremental reindexing (initialized per collection)
+        self._metadata_indices: Dict[str, MetadataIndex] = {}
 
         # Initialize embedding model
         self.embedding_model = self._create_embedding_model(embedding_model, lazy_load=lazy_load_models)
@@ -157,6 +162,17 @@ class CodeRAGAPI:
             return QdrantDatabase(persist_directory=database_path)
         else:
             raise ValueError(f"Unsupported database type: {database_type}")
+
+    def _get_metadata_index_path(self, collection_name: str) -> str:
+        """Get the path to the metadata index file for a collection."""
+        return os.path.join(self.database_path, f"{collection_name}_index_metadata.json")
+
+    def _get_metadata_index(self, collection_name: str) -> MetadataIndex:
+        """Get or create metadata index for a collection."""
+        if collection_name not in self._metadata_indices:
+            index_path = self._get_metadata_index_path(collection_name)
+            self._metadata_indices[collection_name] = MetadataIndex(index_path)
+        return self._metadata_indices[collection_name]
 
     def initialize_collection(
         self, collection_name: str = "codebase", force_reindex: bool = False
@@ -227,6 +243,7 @@ class CodeRAGAPI:
         batch_ids = []
         batch_contents = []
         batch_metadatas = []
+        file_chunk_counts = {}  # Track chunk count per file
 
         chunk_size = self.config.get_chunk_size()
         batch_size = self.config.get_batch_size()
@@ -238,6 +255,7 @@ class CodeRAGAPI:
 
             # Process file into chunks
             chunks = processor.process_file(file_path, chunk_size)
+            file_chunk_counts[file_path] = len(chunks)
 
             for chunk_data in chunks:
                 batch_ids.append(chunk_data["id"])
@@ -269,7 +287,159 @@ class CodeRAGAPI:
             )
             total_chunks += len(batch_ids)
 
+        # Update metadata index for all processed files
+        if collection_name:
+            metadata_index = self._get_metadata_index(collection_name)
+            verify_with_hash = self.config.should_verify_changes_with_hash()
+
+            for file_path in files:
+                file_stats = processor.get_file_stats(file_path)
+                if file_stats:
+                    file_hash = processor.compute_file_hash(file_path) if verify_with_hash else None
+
+                    file_metadata = FileMetadata(
+                        file_path=file_path,
+                        mtime=file_stats['mtime'],
+                        size=file_stats['size'],
+                        chunk_count=file_chunk_counts.get(file_path, 0),
+                        content_hash=file_hash,
+                        last_indexed=datetime.now().timestamp()
+                    )
+                    metadata_index.update_file_metadata(file_path, file_metadata)
+
+            metadata_index.mark_reindex_complete()
+
         return total_chunks
+
+    def incremental_reindex(
+        self,
+        codebase_path: str,
+        collection_name: str = "codebase",
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Perform incremental reindex by detecting and processing only changed files.
+
+        Args:
+            codebase_path: Path to the codebase root directory
+            collection_name: Name of the collection
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Dict with keys:
+                - added_count: Number of files added
+                - modified_count: Number of files modified
+                - deleted_count: Number of files deleted
+                - unchanged_count: Number of files unchanged
+                - total_chunks: Total new chunks processed
+        """
+        path = Path(codebase_path).resolve()
+        path_str = str(path)
+
+        # Get metadata index
+        metadata_index = self._get_metadata_index(collection_name)
+
+        # Discover current files
+        processor = FileProcessor(
+            exclude_tests=self.config.should_exclude_tests(),
+            include_file_header=self.config.should_include_file_header(),
+        )
+        current_files = processor.discover_files(path_str)
+
+        # Detect changes
+        verify_with_hash = self.config.should_verify_changes_with_hash()
+        changes = metadata_index.detect_changes(current_files, verify_with_hash=verify_with_hash)
+
+        added = changes['added']
+        modified = changes['modified']
+        deleted = changes['deleted']
+        files_to_process = added + modified
+
+        print(f"Incremental reindex: {len(added)} added, {len(modified)} modified, {len(deleted)} deleted")
+
+        # Delete chunks for deleted files
+        for file_path in deleted:
+            chunk_ids = self.database.get_ids_by_file(file_path)
+            if chunk_ids:
+                self.database.delete_by_ids(chunk_ids)
+            metadata_index.remove_file_metadata(file_path)
+
+        # Delete chunks for modified files (will be re-added)
+        for file_path in modified:
+            chunk_ids = self.database.get_ids_by_file(file_path)
+            if chunk_ids:
+                self.database.delete_by_ids(chunk_ids)
+
+        # Process new and modified files
+        total_chunks = 0
+        batch_ids = []
+        batch_contents = []
+        batch_metadatas = []
+
+        chunk_size = self.config.get_chunk_size()
+        batch_size = self.config.get_batch_size()
+
+        for i, file_path in enumerate(files_to_process):
+            if progress_callback:
+                progress_callback(i + 1, len(files_to_process), file_path)
+
+            # Process file into chunks
+            chunks = processor.process_file(file_path, chunk_size)
+
+            # Update metadata index
+            file_stats = processor.get_file_stats(file_path)
+            if file_stats:
+                file_hash = processor.compute_file_hash(file_path) if verify_with_hash else None
+                file_metadata = FileMetadata(
+                    file_path=file_path,
+                    mtime=file_stats['mtime'],
+                    size=file_stats['size'],
+                    chunk_count=len(chunks),
+                    content_hash=file_hash,
+                    last_indexed=datetime.now().timestamp()
+                )
+                metadata_index.update_file_metadata(file_path, file_metadata)
+
+            # Batch and store chunks
+            for chunk_data in chunks:
+                batch_ids.append(chunk_data["id"])
+                batch_contents.append(chunk_data["content"])
+                batch_metadatas.append(chunk_data["metadata"])
+
+                if len(batch_ids) >= batch_size:
+                    embeddings = self.embedding_model.embed_batch(batch_contents)
+                    self.database.add(
+                        ids=batch_ids,
+                        embeddings=embeddings,
+                        documents=batch_contents,
+                        metadatas=batch_metadatas,
+                    )
+                    total_chunks += len(batch_ids)
+                    batch_ids = []
+                    batch_contents = []
+                    batch_metadatas = []
+
+        # Process remaining batch
+        if batch_ids:
+            embeddings = self.embedding_model.embed_batch(batch_contents)
+            self.database.add(
+                ids=batch_ids,
+                embeddings=embeddings,
+                documents=batch_contents,
+                metadatas=batch_metadatas,
+            )
+            total_chunks += len(batch_ids)
+
+        # Mark reindex complete
+        metadata_index.mark_reindex_complete()
+
+        return {
+            'added_count': len(added),
+            'modified_count': len(modified),
+            'deleted_count': len(deleted),
+            'unchanged_count': len(changes['unchanged']),
+            'total_chunks': total_chunks
+        }
 
     def search(
         self,
@@ -615,9 +785,38 @@ class CodeRAGAPI:
 
         # Now that collection is initialized, check if database already has data
         if not force_reindex and self.is_processed() and self.count() > 0:
-            # Mark as indexed and return
-            self._indexed_paths.add(path_str)
-            return {"success": True, "already_indexed": True, "total_chunks": self.count(), "reloaded_model": reloaded_model}
+            # Check if we should perform incremental reindex
+            metadata_index = self._get_metadata_index(collection_name)
+            debounce_minutes = self.config.get_reindex_debounce_minutes()
+
+            if metadata_index.should_reindex(debounce_minutes):
+                # Perform incremental reindex
+                print(f"Auto-reindex triggered ({debounce_minutes} min debounce elapsed)")
+                result = self.incremental_reindex(
+                    path_str,
+                    collection_name=collection_name,
+                    progress_callback=progress_callback
+                )
+
+                # Mark as indexed and return
+                self._indexed_paths.add(path_str)
+                return {
+                    "success": True,
+                    "already_indexed": True,
+                    "total_chunks": self.count(),
+                    "reloaded_model": reloaded_model,
+                    "incremental_reindex": result
+                }
+            else:
+                # Debounce active - skip reindex
+                self._indexed_paths.add(path_str)
+                return {
+                    "success": True,
+                    "already_indexed": True,
+                    "total_chunks": self.count(),
+                    "reloaded_model": reloaded_model,
+                    "debounce_active": True
+                }
 
         # Need to index - perform validation if requested
         if validate_codebase:

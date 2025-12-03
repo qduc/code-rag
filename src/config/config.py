@@ -38,6 +38,10 @@ class Config:
         # Logging configuration
         self.log_level = os.getenv("CODE_RAG_LOG_LEVEL", "INFO").upper()
 
+        # Incremental indexing configuration
+        self.reindex_debounce_minutes = self._get_int_env("CODE_RAG_REINDEX_DEBOUNCE_MINUTES", 10)
+        self.verify_changes_with_hash = os.getenv("CODE_RAG_VERIFY_CHANGES_WITH_HASH", "true").lower() in ("true", "1", "yes")
+
     @staticmethod
     def _get_default_database_path() -> str:
         """Get the default database path in the user's cache directory."""
@@ -108,6 +112,14 @@ class Config:
             return int(value)
         except ValueError:
             return default
+
+    def get_reindex_debounce_minutes(self) -> int:
+        """Get the debounce interval for automatic reindexing in minutes."""
+        return self.reindex_debounce_minutes
+
+    def should_verify_changes_with_hash(self) -> bool:
+        """Get whether to verify file changes with content hash."""
+        return self.verify_changes_with_hash
 
     def _sanitize_chunk_defaults(self) -> None:
         """Ensure chunk defaults form a sane pair when env vars are absent or invalid."""
