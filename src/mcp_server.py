@@ -9,6 +9,8 @@ Design Philosophy:
 - Simple: One main tool that "just works"
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import sys
@@ -19,11 +21,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
-from .api import CodeRAGAPI
-
 
 # Global API instance
-api: Optional[CodeRAGAPI] = None
+api: Optional[Any] = None
 
 
 def format_search_results(
@@ -261,26 +261,30 @@ async def async_main():
     """Run the MCP server (async implementation)."""
     global api
 
-    # Initialize the Code-RAG API with lazy loading for fast startup
-    # These can be customized via environment variables (CODE_RAG_*)
-    try:
-        api = CodeRAGAPI(
-            database_type="chroma",  # Default to ChromaDB
-            reranker_enabled=True,  # Enable reranking by default
-            lazy_load_models=True,  # Defer model loading for fast startup
-        )
-        print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
-
-        # Start loading models in background immediately after initialization
-        api.start_background_loading()
-
-    except Exception as e:
-        print(f"Failed to initialize Code-RAG API: {e}", file=sys.stderr)
-        sys.exit(1)
-
     # Run the server
     # The stdio_server will naturally exit when stdin is closed (e.g., when parent process dies)
     async with stdio_server() as (read_stream, write_stream):
+        # Start API import and initialization in background thread for fast startup
+        import threading
+
+        def preload_api():
+            global api
+            try:
+                from .api import CodeRAGAPI
+                api = CodeRAGAPI(
+                    database_type="chroma",  # Default to ChromaDB
+                    reranker_enabled=True,  # Enable reranking by default
+                    lazy_load_models=True,  # Defer model loading for fast startup
+                )
+                print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
+                # Start loading models in background immediately after initialization
+                api.start_background_loading()
+            except Exception as e:
+                print(f"Failed to initialize Code-RAG API: {e}", file=sys.stderr)
+                # Don't exit here, let the server run and handle errors in call_tool
+
+        threading.Thread(target=preload_api, daemon=True).start()
+
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
