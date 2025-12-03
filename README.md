@@ -1,383 +1,180 @@
-# Code-RAG: Semantic Code Search Tool
+# Code-RAG
 
-Code-RAG is a powerful CLI tool that converts source codebases into searchable vector embeddings using RAG (Retrieval-Augmented Generation). It enables semantic code search through natural language queries, making it easy to find relevant code snippets, understand codebase structure, and analyze patterns across your projects.
+**Semantic code search for your entire codebase.** Ask questions in plain English, get relevant code snippets with source locations.
 
-## Features
-
-- 🔍 **Semantic Search**: Use natural language to find code (e.g., "authentication logic", "database connection")
-- 🚀 **Multiple Databases**: Pluggable database support (ChromaDB, Qdrant)
-- 🎯 **Smart Chunking**: Syntax-aware chunking for 40+ programming languages using Tree-sitter
-- 🔄 **Flexible Embeddings**: Support for local models (sentence-transformers) and OpenAI embeddings
-- ⚡ **Reranking**: Optional semantic reranking for improved search results
-- 🤖 **MCP Server**: Integrate with Claude Code as a tool for AI-powered code analysis
-- 🎨 **Smart Filtering**: Respects `.gitignore` and common ignore patterns
+Instead of grepping for function names, ask "authentication logic" and find all related auth code across your project.
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd code-rag
+# Create virtual environment, optional but recommended
+python -m venv .venv
+source .venv/bin/activate
 
-# Install in development mode
+# Install
 pip install -e .
-```
 
-### Basic Usage
-
-```bash
-# Index and search current directory
+# Index and search your codebase
 code-rag
 
-# Index a specific codebase
-code-rag --path /path/to/your/project
-
-# Force reindexing
-code-rag --reindex
-
-# Use a different embedding model
-code-rag --model sentence-transformers/paraphrase-MiniLM-L6-v2
-
-# Use Qdrant instead of ChromaDB
-code-rag --database qdrant
-
-# Disable reranking
-code-rag --no-rerank
-
-# Change number of results
-code-rag --results 10
+# That's it. Start asking questions about your code.
 ```
 
-### Example Session
+## Example
 
 ```
 $ code-rag --path /home/user/myproject
 
-==============================================================
-Code-RAG: Codebase Vector Search Tool
-==============================================================
-Codebase path: /home/user/myproject
-Database type: chroma
-Embedding model: sentence-transformers/all-MiniLM-L6-v2
-Reranking: enabled
-==============================================================
-
-Loading embedding model...
-Model loaded. Embedding dimension: 384
-
-Loading reranker model...
-Reranker loaded: cross-encoder/ms-marco-MiniLM-L-6-v2
-
-Processing codebase...
-Found 247 files to process
-Processing (247/247): src/utils/helpers.py
-
-Processing complete! Indexed 1,234 chunks.
-
-==============================================================
-Query Session Started
-Enter your query to search the codebase.
-Press Ctrl+C to exit.
-==============================================================
+Processing codebase... Found 247 files
+Indexed 1,234 chunks in 12s
 
 Query: authentication logic
 
-Found 5 results:
+Result 1 | Similarity: 0.85
+File: src/auth/authenticator.py (lines 45-78)
 
-------------------------------------------------------------
-Result 1 | Similarity: 0.8542
-File: src/auth/authenticator.py
-Lines: 45-78 | Chunk: 2/5
-------------------------------------------------------------
 class Authenticator:
     """Handle user authentication and session management."""
 
     def authenticate(self, username: str, password: str) -> bool:
-        """Authenticate user credentials."""
         ...
 ```
 
-## MCP Server Integration
+## Why Use Code-RAG?
 
-Code-RAG can be used as an MCP (Model Context Protocol) server, allowing Claude to automatically search your codebase during conversations.
+- **Understand unfamiliar codebases** - Ask questions instead of reading everything
+- **Find examples** - "error handling with retries" finds all relevant patterns
+- **Refactoring aid** - Locate all code related to a feature you're changing
+- **Documentation** - Extract context for writing docs or onboarding
 
-### Quick MCP Setup
+## Basic Usage
+
+```bash
+# Different codebase
+code-rag --path /path/to/repo
+
+# Force reindex
+code-rag --reindex
+
+# More results
+code-rag --results 10
+
+# Different embedding model (better for code)
+code-rag --model text-embedding-3-small # need to set OPENAI_API_KEY env
+
+# Use Qdrant instead of ChromaDB
+code-rag --database qdrant
+```
+
+## Use with Claude Code (MCP Integration)
+
+Code-RAG works as an MCP server, letting Claude automatically search your codebase during conversations.
 
 ```bash
 # Register with Claude Code
-claude mcp add code-rag --type stdio -- code-rag-mcp
+claude mcp add code-rag --transport stdio path/to/venv/bin/code-rag-mcp
 ```
 
-For detailed MCP setup instructions, see [MCP_SETUP.md](MCP_SETUP.md).
-
-### Using Code-RAG with Claude
-
-Once configured, you can interact with Claude:
-
+Then talk to Claude:
 ```
-You: "Index my project at /home/user/myapp and find the database connection logic"
+You: "Find the database connection logic"
 
-Claude: [Automatically indexes the codebase and searches for database logic]
+Claude: [Automatically searches and finds the code]
         "I found the database connection logic in src/db/connection.py..."
 ```
 
-## Architecture
-
-Code-RAG uses a plugin-based architecture with abstract interfaces for extensibility:
-
-### Components
-
-1. **File Processor**: Discovers, reads, and chunks source files
-   - Syntax-aware chunking using Tree-sitter for supported languages
-   - Automatic fallback to line-aware chunking
-   - Respects `.gitignore` and standard ignore patterns
-
-2. **Database Layer**: Pluggable vector database interface
-   - ChromaDB (default): Lightweight embedded database
-   - Qdrant: Network-based option for distributed deployments
-   - Easy to add new databases
-
-3. **Embedding Layer**: Pluggable embedding model interface
-   - Local: sentence-transformers (no API calls)
-   - Code-optimized: nomic-ai/CodeRankEmbed (specialized for code search)
-   - OpenAI: text-embedding-3-small, text-embedding-ada-002
-   - Automatic query instruction prefixing for compatible models
-   - Easy to add new providers
-
-4. **Reranker**: Optional semantic reranking
-   - Uses cross-encoder models for improved relevance
-   - Configurable retrieval multiplier
-
-5. **MCP Server**: Model Context Protocol integration
-   - Exposes Code-RAG as tools for Claude
-   - Supports indexing, searching, and status checks
+See [MCP_SETUP.md](MCP_SETUP.md) for detailed setup.
 
 ## Configuration
 
-Code-RAG can be configured via environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CODE_RAG_DATABASE_TYPE` | Database type ("chroma" or "qdrant") | `chroma` |
-| `CODE_RAG_DATABASE_PATH` | Database storage path | Platform cache directory |
-| `CODE_RAG_EMBEDDING_MODEL` | Embedding model name | `sentence-transformers/all-MiniLM-L6-v2` |
-| `CODE_RAG_CHUNK_SIZE` | Characters per chunk | `1024` |
-| `CODE_RAG_BATCH_SIZE` | Batch size for processing | `32` |
-| `CODE_RAG_RERANKER_ENABLED` | Enable semantic reranking | `true` |
-| `CODE_RAG_RERANKER_MODEL` | Reranker model name | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
-| `CODE_RAG_RERANKER_MULTIPLIER` | Retrieval multiplier for reranking | `2` |
-
-### Example Configuration
+Set via environment variables:
 
 ```bash
-# Use CodeRankEmbed for optimized code search (recommended)
+# Use code-optimized embeddings (recommended)
 export CODE_RAG_EMBEDDING_MODEL="nomic-ai/CodeRankEmbed"
 
-# Or use OpenAI embeddings
+# Or OpenAI embeddings
 export OPENAI_API_KEY="sk-..."
 export CODE_RAG_EMBEDDING_MODEL="text-embedding-3-small"
 
-# Use Qdrant database
+# Use Qdrant
 export CODE_RAG_DATABASE_TYPE="qdrant"
-export CODE_RAG_DATABASE_PATH="http://localhost:6333"
 
-# Adjust chunking
+# Adjust chunk size
 export CODE_RAG_CHUNK_SIZE="2048"
-export CODE_RAG_BATCH_SIZE="64"
-
-# Run Code-RAG
-code-rag --path /path/to/project
 ```
 
-**Note:** When using `nomic-ai/CodeRankEmbed`, the model automatically prepends the instruction prefix "Represent this query for searching relevant code: " to all search queries as required by the model. This happens transparently - you don't need to include the prefix in your queries.
+Full configuration options in [IMPLEMENTATION.md](IMPLEMENTATION.md#configuration-system).
 
-## Supported Languages
+## How It Works
 
-Code-RAG supports syntax-aware chunking for:
+1. **Scans** your codebase (respects `.gitignore`)
+2. **Chunks** code intelligently (syntax-aware for Python, JS, Go, Rust, Java, C/C++)
+3. **Embeds** chunks as vectors using ML models
+4. **Stores** in vector database (ChromaDB or Qdrant)
+5. **Searches** semantically when you query
 
-- Python
-- JavaScript / TypeScript
-- Go
-- Rust
-- Java
-- C / C++
-
-For other languages, it automatically falls back to line-aware chunking.
+Pluggable architecture - swap databases, embedding models, or add new ones.
 
 ## API Usage
 
-You can also use Code-RAG programmatically:
+Use programmatically:
 
 ```python
 from src.api import CodeRAGAPI
 
-# Initialize API
-api = CodeRAGAPI(
-    database_type="chroma",
-    embedding_model="sentence-transformers/all-MiniLM-L6-v2",
-    reranker_enabled=True
-)
-
-# Initialize collection
+api = CodeRAGAPI(database_type="chroma", embedding_model="all-MiniLM-L6-v2")
 api.initialize_collection("myproject")
 
-# Index a codebase
-def progress(current, total, file_path):
-    print(f"Processing {current}/{total}: {file_path}")
-
-chunks = api.index_codebase(
-    "/path/to/project",
-    progress_callback=progress
-)
-print(f"Indexed {chunks} chunks")
+# Index
+chunks = api.index_codebase("/path/to/project")
 
 # Search
 results = api.search("authentication logic", n_results=5)
-for result in results:
-    print(f"{result['file_path']} - Similarity: {result['similarity']:.4f}")
-    print(result['content'][:200])
-    print()
-
-# Get specific chunk
-chunk = api.get_chunk("src/auth/authenticator.py", chunk_index=1)
-if chunk:
-    print(chunk['content'])
-
-# Check status
-print(f"Is processed: {api.is_processed()}")
-print(f"Total chunks: {api.count()}")
-
-# Cleanup
-api.close()
-```
-
-## Development
-
-### Project Structure
-
-```
-code-rag/
-├── src/
-│   ├── main.py              # CLI entry point
-│   ├── api.py               # Public API layer
-│   ├── mcp_server.py        # MCP server implementation
-│   ├── config/
-│   │   └── config.py        # Configuration management
-│   ├── database/
-│   │   ├── database_interface.py   # Abstract database interface
-│   │   ├── chroma_database.py      # ChromaDB implementation
-│   │   └── qdrant_database.py      # Qdrant implementation
-│   ├── embeddings/
-│   │   ├── embedding_interface.py          # Abstract embedding interface
-│   │   ├── sentence_transformer_embedding.py
-│   │   └── openai_embedding.py
-│   ├── processor/
-│   │   └── file_processor.py        # File discovery and chunking
-│   └── reranker/
-│       ├── reranker_interface.py    # Abstract reranker interface
-│       └── cross_encoder_reranker.py
-├── setup.py
-├── requirements.txt
-├── README.md
-├── MCP_SETUP.md
-└── AGENTS.md             # Architecture documentation
-```
-
-### Testing
-
-```bash
-# Run tests
-pytest
-
-# Code quality
-black src/
-flake8 src/
-```
-
-### Adding a New Database
-
-1. Create a new file in `src/database/` (e.g., `my_database.py`)
-2. Implement the `DatabaseInterface` abstract class
-3. Add initialization logic in `src/main.py` and `src/api.py`
-
-### Adding a New Embedding Provider
-
-1. Create a new file in `src/embeddings/` (e.g., `my_embedding.py`)
-2. Implement the `EmbeddingInterface` abstract class
-3. Add initialization logic in `src/main.py` and `src/api.py`
-
-## Performance Tips
-
-- **Use smaller chunk sizes** for more granular search results
-- **Increase batch size** for faster processing (requires more memory)
-- **Disable reranking** if search speed is critical
-- **Use local models** to avoid API costs and latency
-- **Use Qdrant** for distributed deployments or very large codebases
-
-## Troubleshooting
-
-### Import Errors
-
-```bash
-# Reinstall with all dependencies
-pip install -e . --force-reinstall
-```
-
-### Database Issues
-
-```bash
-# Clear the database and reindex
-code-rag --reindex
-```
-
-### Memory Issues
-
-```bash
-# Reduce batch size
-export CODE_RAG_BATCH_SIZE="16"
-code-rag
-```
-
-### OpenAI Rate Limits
-
-```bash
-# Use local models instead
-export CODE_RAG_EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
-code-rag
+for r in results:
+    print(f"{r['file_path']} - {r['similarity']:.2f}")
 ```
 
 ## Documentation
 
-- [MCP_SETUP.md](MCP_SETUP.md) - MCP server setup and usage
-- [AGENTS.md](AGENTS.md) - Architecture and design patterns
-- [init.md](init.md) - Original project specification
+- **[AGENTS.md](AGENTS.md)** - Developer onboarding and architecture overview
+- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Detailed implementation reference
+- **[MCP_SETUP.md](MCP_SETUP.md)** - MCP server setup guide
+
+## Supported Languages
+
+Syntax-aware chunking for: Python, JavaScript, TypeScript, Go, Rust, Java, C, C++
+
+Other languages use line-aware chunking (still works, just less context-aware).
+
+## Requirements
+
+- Python 3.8+
+- Minimal dependencies (ChromaDB + sentence-transformers by default)
+- Optional: OpenAI API key, Qdrant server
+
+## Troubleshooting
+
+**Import errors?** `pip install -e . --force-reinstall`
+
+**Database issues?** `code-rag --reindex`
+
+**Memory issues?** `export CODE_RAG_BATCH_SIZE="16"`
 
 ## Contributing
 
-Contributions are welcome! Please:
+1. Fork the repo
+2. Create feature branch
+3. Make changes
+4. Add tests
+5. Submit PR
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+See [AGENTS.md](AGENTS.md) for architecture and [IMPLEMENTATION.md](IMPLEMENTATION.md) for internals.
 
 ## License
 
-[Add your license here]
+[Add your license]
 
-## Support
+---
 
-For issues or questions:
-- Open an issue on GitHub
-- Check the troubleshooting section above
-- Review the documentation files
-
-## Acknowledgments
-
-- Built with [ChromaDB](https://www.trychroma.com/) and [Qdrant](https://qdrant.tech/)
-- Uses [sentence-transformers](https://www.sbert.net/) for embeddings
-- Powered by [Tree-sitter](https://tree-sitter.github.io/) for syntax parsing
-- MCP integration via [Model Context Protocol](https://modelcontextprotocol.io/)
+Built with [ChromaDB](https://www.trychroma.com/), [Qdrant](https://qdrant.tech/), [sentence-transformers](https://www.sbert.net/), and [Tree-sitter](https://tree-sitter.github.io/)
