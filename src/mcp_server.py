@@ -21,6 +21,8 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
+from .config.config import Config
+
 
 # Global API instance
 api: Optional[Any] = None
@@ -266,9 +268,10 @@ async def async_main():
             global api
             try:
                 from .api import CodeRAGAPI
+                config = Config()
                 api = CodeRAGAPI(
-                    database_type="chroma",  # Default to ChromaDB
-                    reranker_enabled=True,  # Enable reranking by default
+                    database_type=config.get_database_type(),
+                    reranker_enabled=config.is_reranker_enabled(),
                     lazy_load_models=True,  # Defer model loading for fast startup
                 )
                 print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
