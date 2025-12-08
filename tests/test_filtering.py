@@ -1,13 +1,8 @@
-import os
-import shutil
 import tempfile
 from pathlib import Path
-import sys
-
-# Add current directory to path so we can import src
-sys.path.append(os.getcwd())
 
 from src.api import CodeRAGAPI
+
 
 def create_dummy_codebase(base_path):
     """Creates a dummy codebase structure."""
@@ -15,7 +10,7 @@ def create_dummy_codebase(base_path):
         "src/main.py": "def main():\n    print('Hello from main')\n",
         "src/utils.py": "def helper():\n    print('I am a helper')\n",
         "docs/readme.md": "# Readme\nThis is the main documentation.\n",
-        "tests/test_main.py": "def test_main():\n    assert True\n"
+        "tests/test_main.py": "def test_main():\n    assert True\n",
     }
 
     for rel_path, content in files.items():
@@ -23,6 +18,7 @@ def create_dummy_codebase(base_path):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w") as f:
             f.write(content)
+
 
 def test_filtering():
     # Create temporary directories
@@ -86,6 +82,7 @@ def test_filtering():
         print("Test 3 PASSED")
 
         api.close()
+
 
 if __name__ == "__main__":
     test_filtering()

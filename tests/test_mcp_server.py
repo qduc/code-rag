@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+import src.mcp_server as mcp_mod
 from src.api import CodeRAGAPI
 from src.mcp_server import (
     format_search_results,
@@ -394,7 +395,7 @@ class TestListTools:
 
         assert tool.description is not None
         assert len(tool.description) > 0
-        assert "natural language" in tool.description.lower()
+        assert "semantic search" in tool.description.lower()
 
 
 # ============================================================================
@@ -423,6 +424,70 @@ class TestCallToolValidation:
             )
             assert len(result) == 1
             assert "Error: Code-RAG API not initialized" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_call_tool_waits_for_api_initialization(self):
+        """If API is initialized shortly after startup, call_tool should wait and proceed.
+
+        This test simulates delayed initialization in a background thread and verifies
+        that `call_tool` does not immediately return the initialization error.
+        """
+        # Ensure initial state: no API and event cleared
+        mcp_mod.api = None
+        try:
+            mcp_mod.api_ready_event.clear()
+        except Exception:
+            pass
+
+        # Start a background thread that sets the api after a short delay
+        import threading, time
+
+        def delayed_init():
+            time.sleep(0.2)
+            class DummyAPI:
+                def ensure_indexed(self, *a, **k):
+                    return {"success": True}
+                def search(self, *a, **k):
+                    return [
+                        {
+                            "content": "dummy",
+                            "file_path": "src/dummy.py",
+                            "chunk_index": 0,
+                            "total_chunks": 1,
+                            "start_line": 1,
+                            "end_line": 3,
+                            "similarity": 0.9,
+                        }
+                    ]
+            mcp_mod.api = DummyAPI()
+            try:
+                mcp_mod.api_ready_event.set()
+            except Exception:
+                pass
+
+        threading.Thread(target=delayed_init, daemon=True).start()
+
+        # Call tool; should wait for initialization and then proceed
+        result = await call_tool(
+            "search_codebase", {"codebase_path": "/tmp", "query": "dummy"}
+        )
+
+        assert len(result) == 1
+        assert "dummy" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_call_tool_returns_error_if_api_not_ready(self):
+        """If API never initializes, call_tool should return an error message after waiting."""
+        mcp_mod.api = None
+        try:
+            mcp_mod.api_ready_event.clear()
+        except Exception:
+            pass
+
+        # Do not initialize API; call_tool should return the error after wait
+        result = await call_tool("search_codebase", {"query": "test"})
+        assert len(result) == 1
+        assert "Error: Code-RAG API not initialized" in result[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_unknown_tool_name(self):
