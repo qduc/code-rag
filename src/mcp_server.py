@@ -12,6 +12,7 @@ Design Philosophy:
 from __future__ import annotations
 
 import asyncio
+import threading
 import json
 import sys
 from pathlib import Path
@@ -26,6 +27,9 @@ from .config.config import Config
 
 # Global API instance
 api: Optional[Any] = None
+
+# Event set when `api` has been initialized in background thread
+api_ready_event = threading.Event()
 
 
 def format_search_results(
@@ -195,12 +199,28 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
     global api
 
     if api is None:
-        return [
-            TextContent(
-                type="text",
-                text="Error: Code-RAG API not initialized. Server startup may have failed.",
-            )
-        ]
+        # If a request arrives very shortly after server startup, the API may still be
+        # initializing in the background thread. Wait briefly for initialization so we
+        # don't immediately return an error for a transient race condition.
+        # We wait up to 30 seconds to allow for model loading (e.g., downloading embeddings).
+        try:
+            loop = asyncio.get_running_loop()
+            # Wait up to 30 seconds for the API to be ready in the background thread
+            # This accounts for model loading time on first startup
+            def wait_for_api(timeout=30.0):
+                return api_ready_event.wait(timeout)
+            await loop.run_in_executor(None, wait_for_api)
+        except Exception:
+            # If waiting fails for any reason (no running loop etc.), fall through and return
+            pass
+
+        if api is None:
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: Code-RAG API not initialized. Server startup may have failed.",
+                )
+            ]
 
     try:
         if name == "search_codebase":
@@ -277,6 +297,11 @@ async def async_main():
                 print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
                 # Start loading models in background immediately after initialization
                 api.start_background_loading()
+                # Signal that `api` has been initialized and is ready to accept calls
+                try:
+                    api_ready_event.set()
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"Failed to initialize Code-RAG API: {e}", file=sys.stderr)
                 # Don't exit here, let the server run and handle errors in call_tool
