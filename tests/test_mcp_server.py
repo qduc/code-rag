@@ -411,7 +411,7 @@ class TestCallToolValidation:
         """Test that error is returned when codebase_path is missing."""
         # Mock the global api
         with patch("src.mcp_server.api", None):
-            result = await call_tool("search_codebase", {"query": "test"})
+            result = await call_tool("search_codebase", {"query": "test"}, _api_wait_timeout=0.1)
             assert len(result) == 1
             assert "Error: Code-RAG API not initialized" in result[0].text
 
@@ -420,7 +420,7 @@ class TestCallToolValidation:
         """Test that error is returned when query is missing."""
         with patch("src.mcp_server.api", None):
             result = await call_tool(
-                "search_codebase", {"codebase_path": "/path/to/code"}
+                "search_codebase", {"codebase_path": "/path/to/code"}, _api_wait_timeout=0.1
             )
             assert len(result) == 1
             assert "Error: Code-RAG API not initialized" in result[0].text
@@ -485,7 +485,7 @@ class TestCallToolValidation:
             pass
 
         # Do not initialize API; call_tool should return the error after wait
-        result = await call_tool("search_codebase", {"query": "test"})
+        result = await call_tool("search_codebase", {"query": "test"}, _api_wait_timeout=0.1)
         assert len(result) == 1
         assert "Error: Code-RAG API not initialized" in result[0].text
 

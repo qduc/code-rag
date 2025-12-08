@@ -191,10 +191,19 @@ async def list_tools() -> list[Tool]:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageContent | EmbeddedResource]:
+async def call_tool(
+    name: str,
+    arguments: Any,
+    _api_wait_timeout: float = 30.0
+) -> list[TextContent | ImageContent | EmbeddedResource]:
     """Handle tool calls from Claude.
 
     Philosophy: Keep it simple and transparent. Auto-index when needed.
+
+    Args:
+        name: Tool name to execute
+        arguments: Tool arguments
+        _api_wait_timeout: Internal parameter for testing - timeout in seconds to wait for API initialization
     """
     global api
 
@@ -205,9 +214,9 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
         # We wait up to 30 seconds to allow for model loading (e.g., downloading embeddings).
         try:
             loop = asyncio.get_running_loop()
-            # Wait up to 30 seconds for the API to be ready in the background thread
+            # Wait for the API to be ready in the background thread
             # This accounts for model loading time on first startup
-            def wait_for_api(timeout=30.0):
+            def wait_for_api(timeout=_api_wait_timeout):
                 return api_ready_event.wait(timeout)
             await loop.run_in_executor(None, wait_for_api)
         except Exception:
