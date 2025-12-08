@@ -15,6 +15,7 @@ class OpenAIEmbedding(EmbeddingInterface):
         self,
         model_name: str = "text-embedding-3-small",
         api_key: Optional[str] = None,
+        idle_timeout: int = 1800,  # Not used for API-based models, added for interface consistency
     ):
         """
         Initialize the OpenAI embedding model.
@@ -22,9 +23,12 @@ class OpenAIEmbedding(EmbeddingInterface):
         Args:
             model_name: Name of the model to use (default: text-embedding-3-small)
             api_key: OpenAI API key. If not provided, will look for OPENAI_API_KEY env var.
+            idle_timeout: Not used for API-based models (kept for interface consistency)
         """
         self.model_name = model_name
         self.client = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
+        # OpenAI is API-based, no model to unload, but we store the timeout for consistency
+        self._idle_timeout = idle_timeout
 
     def embed(self, text: str) -> List[float]:
         """

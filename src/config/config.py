@@ -42,6 +42,10 @@ class Config:
         self.reindex_debounce_minutes = self._get_int_env("CODE_RAG_REINDEX_DEBOUNCE_MINUTES", 10)
         self.verify_changes_with_hash = os.getenv("CODE_RAG_VERIFY_CHANGES_WITH_HASH", "true").lower() in ("true", "1", "yes")
 
+        # Model idle timeout configuration (in seconds)
+        # Default: 1800 seconds (30 minutes)
+        self.model_idle_timeout = self._get_int_env("CODE_RAG_MODEL_IDLE_TIMEOUT", 1800)
+
     @staticmethod
     def _get_default_database_path() -> str:
         """Get the default database path in the user's cache directory."""
@@ -120,6 +124,10 @@ class Config:
     def should_verify_changes_with_hash(self) -> bool:
         """Get whether to verify file changes with content hash."""
         return self.verify_changes_with_hash
+
+    def get_model_idle_timeout(self) -> int:
+        """Get the model idle timeout in seconds (default: 1800 = 30 minutes)."""
+        return self.model_idle_timeout
 
     def _sanitize_chunk_defaults(self) -> None:
         """Ensure chunk defaults form a sane pair when env vars are absent or invalid."""

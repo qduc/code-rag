@@ -130,7 +130,8 @@ class CodeRAGAPI:
         if reranker_enabled:
             try:
                 model_name = reranker_model or self.config.get_reranker_model()
-                self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models)
+                idle_timeout = self.config.get_model_idle_timeout()
+                self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models, idle_timeout=idle_timeout)
             except Exception as e:
                 print(f"Warning: Failed to load reranker ({e}), disabling reranking")
                 self.reranker = None
@@ -147,10 +148,11 @@ class CodeRAGAPI:
 
     def _create_embedding_model(self, model_name: str, lazy_load: bool = False) -> EmbeddingInterface:
         """Create an embedding model instance based on the model name."""
+        idle_timeout = self.config.get_model_idle_timeout()
         if model_name.startswith("text-embedding-"):
-            return OpenAIEmbedding(model_name)
+            return OpenAIEmbedding(model_name, idle_timeout=idle_timeout)
         else:
-            return SentenceTransformerEmbedding(model_name, lazy_load=lazy_load)
+            return SentenceTransformerEmbedding(model_name, lazy_load=lazy_load, idle_timeout=idle_timeout)
 
     def _create_database(
         self, database_type: str, database_path: str
@@ -197,7 +199,7 @@ class CodeRAGAPI:
 
         # If dimension mismatch, reload with the stored model
         if stored_model and stored_model != self.embedding_model_name:
-            self.embedding_model = self._create_embedding_model(stored_model)
+            self.embedding_model = self._create_embedding_model(stored_model, lazy_load=self.lazy_load_models)
             self.embedding_model_name = stored_model
             return stored_model
 
@@ -776,7 +778,7 @@ class CodeRAGAPI:
 
         if stored_model and stored_model != self.embedding_model_name:
             # Dimension mismatch - reload with stored model
-            self.embedding_model = self._create_embedding_model(stored_model)
+            self.embedding_model = self._create_embedding_model(stored_model, lazy_load=self.lazy_load_models)
             self.embedding_model_name = stored_model
             reloaded_model = stored_model
 
