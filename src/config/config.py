@@ -3,7 +3,10 @@
 import os
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 class Config:
     """Configuration handler for the code-rag application."""
@@ -27,6 +30,12 @@ class Config:
         # Chunking configuration
         self.include_file_header = os.getenv("CODE_RAG_INCLUDE_FILE_HEADER", "true").lower() in ("true", "1", "yes")
         self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in ("true", "1", "yes")
+
+        # Additional ignore patterns (comma-separated)
+        additional_ignore_str = os.getenv("CODE_RAG_ADDITIONAL_IGNORE_PATTERNS", "")
+        self.additional_ignore_patterns = [
+            pattern.strip() for pattern in additional_ignore_str.split(",") if pattern.strip()
+        ]
 
         self._sanitize_chunk_defaults()
 
@@ -102,6 +111,10 @@ class Config:
     def should_exclude_tests(self) -> bool:
         """Get whether to exclude test files from indexing."""
         return self.exclude_tests
+
+    def get_additional_ignore_patterns(self) -> list[str]:
+        """Get the additional ignore patterns."""
+        return self.additional_ignore_patterns
 
     def get_log_level(self) -> str:
         """Get the configured log level."""

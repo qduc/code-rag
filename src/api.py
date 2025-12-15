@@ -234,6 +234,7 @@ class CodeRAGAPI:
         processor = FileProcessor(
             exclude_tests=self.config.should_exclude_tests(),
             include_file_header=self.config.should_include_file_header(),
+            additional_ignore_patterns=self.config.get_additional_ignore_patterns(),
         )
 
         # Discover files
@@ -345,6 +346,7 @@ class CodeRAGAPI:
         processor = FileProcessor(
             exclude_tests=self.config.should_exclude_tests(),
             include_file_header=self.config.should_include_file_header(),
+            additional_ignore_patterns=self.config.get_additional_ignore_patterns(),
         )
         current_files = processor.discover_files(path_str)
 
@@ -822,7 +824,11 @@ class CodeRAGAPI:
 
         # Need to index - perform validation if requested
         if validate_codebase:
-            processor = FileProcessor()
+            processor = FileProcessor(
+                exclude_tests=self.config.should_exclude_tests(),
+                include_file_header=self.config.should_include_file_header(),
+                additional_ignore_patterns=self.config.get_additional_ignore_patterns(),
+            )
             if not looks_like_codebase(path, processor):
                 # Ask for confirmation via callback
                 if validation_callback:

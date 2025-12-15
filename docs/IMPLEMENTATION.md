@@ -19,7 +19,7 @@ This document contains detailed implementation notes, patterns, and design decis
 
 ### Responsibilities
 - File discovery via recursive traversal
-- Respects `.gitignore` and standard ignore patterns (e.g., `node_modules`, `.git`, build directories)
+- Respects `.gitignore`, standard ignore patterns (e.g., `node_modules`, `.git`, build directories), and configurable additional patterns
 - File reading with multiple encoding fallbacks to handle diverse source files
 - Syntax-aware chunking for supported languages, with fallback to line-aware chunking
 - Extensible file type detection (40+ programming languages and formats)
@@ -236,6 +236,7 @@ Located in `src/config/config.py`. All have fallback defaults:
 | `CODE_RAG_DATABASE_PATH` | `.code-rag` | Persist directory for embeddings |
 | `CODE_RAG_CHUNK_SIZE` | `1024` | Characters per code chunk |
 | `CODE_RAG_BATCH_SIZE` | `32` | Documents per batch before insert |
+| `CODE_RAG_ADDITIONAL_IGNORE_PATTERNS` | `` | Comma-separated additional ignore patterns |
 
 ### CLI Override Pattern
 

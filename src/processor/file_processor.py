@@ -97,6 +97,7 @@ class FileProcessor:
     def __init__(
         self,
         ignore_patterns: List[str] = None,
+        additional_ignore_patterns: List[str] = None,
         exclude_tests: bool = False,
         include_file_header: bool = True,
     ):
@@ -105,10 +106,13 @@ class FileProcessor:
 
         Args:
             ignore_patterns: List of patterns to ignore during file discovery
+            additional_ignore_patterns: Additional patterns to ignore (besides defaults)
             exclude_tests: Whether to exclude test files from processing
             include_file_header: Whether to include file headers in chunks
         """
         self.ignore_patterns = ignore_patterns or self._default_ignore_patterns()
+        if additional_ignore_patterns:
+            self.ignore_patterns.extend(additional_ignore_patterns)
         self.exclude_tests = exclude_tests
         self.include_file_header = include_file_header
         self._gitignore_patterns: Set[str] = set()
@@ -136,6 +140,21 @@ class FileProcessor:
             "*.whl",
             ".DS_Store",
             "Thumbs.db",
+            # Dependency lock files
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "poetry.lock",
+            "Pipfile.lock",
+            "Cargo.lock",
+            "go.sum",
+            "Gemfile.lock",
+            # Build artifacts and minified code
+            "*.min.js",
+            "*.min.css",
+            "*.map",
+            # Log files
+            "*.log",
         ]
 
     def _load_gitignore(self, root_path: str) -> None:

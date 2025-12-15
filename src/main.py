@@ -17,7 +17,8 @@ from .reranker.reranker_interface import RerankerInterface
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
 from pathlib import PurePath
 
-load_dotenv()  # Load environment variables from .env file
+# env_path = Path(__file__).resolve().parent / ".env"
+# load_dotenv(env_path)
 
 def process_codebase(
     root_path: str,
@@ -37,7 +38,11 @@ def process_codebase(
     Returns:
         Number of chunks processed
     """
-    processor = FileProcessor()
+    processor = FileProcessor(
+        exclude_tests=config.should_exclude_tests(),
+        include_file_header=config.should_include_file_header(),
+        additional_ignore_patterns=config.get_additional_ignore_patterns(),
+    )
 
     print("Discovering files...")
     files = processor.discover_files(root_path)

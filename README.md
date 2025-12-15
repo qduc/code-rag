@@ -102,6 +102,9 @@ export CODE_RAG_DATABASE_TYPE="qdrant"
 
 # Adjust chunk size
 export CODE_RAG_CHUNK_SIZE="2048"
+
+# Add custom ignore patterns (comma-separated)
+export CODE_RAG_ADDITIONAL_IGNORE_PATTERNS="*.tmp,*.bak,logs/"
 ```
 
 Full configuration options in [IMPLEMENTATION.md](IMPLEMENTATION.md#configuration-system).
