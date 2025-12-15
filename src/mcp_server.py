@@ -304,6 +304,7 @@ async def async_main():
                 config = Config()
                 api = CodeRAGAPI(
                     database_type=config.get_database_type(),
+                    embedding_model=config.get_embedding_model(),
                     reranker_enabled=config.is_reranker_enabled(),
                     lazy_load_models=True,  # Defer model loading for fast startup
                 )
