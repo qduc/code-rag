@@ -14,7 +14,7 @@ class Config:
     def __init__(self):
         """Initialize configuration from environment variables or defaults."""
         self.embedding_model = os.getenv(
-            "CODE_RAG_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+            "CODE_RAG_EMBEDDING_MODEL", "nomic-ai/CodeRankEmbed"
         )
         self.database_type = os.getenv("CODE_RAG_DATABASE_TYPE", "chroma")
 
