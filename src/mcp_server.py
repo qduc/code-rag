@@ -15,6 +15,8 @@ import asyncio
 import threading
 import json
 import sys
+import signal
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -24,6 +26,9 @@ from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
 from .config.config import Config
 
+# from dotenv import load_dotenv
+# env_path = Path(__file__).resolve().parent / ".env"
+# load_dotenv(env_path)
 
 # Global API instance
 api: Optional[Any] = None
@@ -288,7 +293,6 @@ async def async_main():
     global api
 
     # Run the server
-    # The stdio_server will naturally exit when stdin is closed (e.g., when parent process dies)
     async with stdio_server() as (read_stream, write_stream):
         # Start API import and initialization in background thread for fast startup
         import threading
@@ -317,7 +321,70 @@ async def async_main():
 
         threading.Thread(target=preload_api, daemon=True).start()
 
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+        # Create the initialization options and run loop
+        init_options = server.create_initialization_options()
+        server_task = asyncio.create_task(
+            server.run(read_stream, write_stream, init_options)
+        )
+
+        # Setup Shutdown Logic
+        #
+        # Problem: MCP clients (like Claude Code) send SIGINT while keeping stdin open,
+        # expecting shutdown within ~100ms. However, stdio_server() blocks waiting for
+        # stdin EOF, preventing clean exit.
+        #
+        # Solution:
+        # 1. Close fd 0 to force stdin EOF and unblock stdio_server()
+        # 2. Cancel both server_task and main_task to exit the context manager
+        # 3. Use os._exit(0) after shutdown to bypass asyncio.run() hanging
+        loop = asyncio.get_running_loop()
+        main_task = asyncio.current_task()
+        shutting_down = False
+
+        def signal_handler(sig: int):
+            nonlocal shutting_down
+            if shutting_down:
+                return
+            shutting_down = True
+
+            try:
+                sig_name = signal.Signals(sig).name
+            except Exception:
+                sig_name = str(sig)
+            print(f"\nReceived {sig_name}, initiating shutdown...", file=sys.stderr)
+
+            # Close stdin (fd 0) to force EOF and unblock stdio_server().
+            # The MCP stdio_server() intentionally does not close stdio handles
+            # and will otherwise wait indefinitely for stdin EOF.
+            try:
+                os.close(0)
+            except Exception:
+                pass
+
+            # Cancel both tasks to ensure clean context manager exit
+            server_task.cancel()
+            if main_task is not None:
+                main_task.cancel()
+
+        # Register the signal handler
+        loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT)
+        loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM)
+
+        print("MCP Server running...", file=sys.stderr)
+
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
+
+        print("Shutdown complete.", file=sys.stderr)
+
+        # Force process exit after signal-initiated shutdown.
+        # After os.close(0), asyncio.run() may hang waiting for event loop cleanup.
+        # Using os._exit(0) ensures immediate termination and meets Claude Code's
+        # 100ms shutdown timeout requirement.
+        if shutting_down:
+            os._exit(0)
 
 
 def main():
@@ -325,9 +392,8 @@ def main():
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
-        # Handle Ctrl+C gracefully
-        print("\nShutting down Code-RAG MCP server...", file=sys.stderr)
-        sys.exit(0)
+        # Fallback for environments where signal handlers might miss
+        pass
 
 
 if __name__ == "__main__":
