@@ -35,6 +35,14 @@ def get_server_info_path() -> Path:
     return cache_dir / "embedding_server.json"
 
 
+def get_server_log_path() -> Path:
+    """Get the path to the server log file."""
+    from ..config.config import Config
+    config = Config()
+    cache_dir = Path(config.get_database_path())
+    return cache_dir / "embedding_server.log"
+
+
 class HttpEmbedding(EmbeddingInterface):
     """HTTP client that connects to the shared embedding server."""
 
@@ -86,28 +94,50 @@ class HttpEmbedding(EmbeddingInterface):
         # Use the same Python interpreter
         python_exe = sys.executable
 
-        # Create a detached subprocess that survives parent exit
-        if os.name == 'nt':  # Windows
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-            self._server_process = subprocess.Popen(
-                [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
-                creationflags=creationflags,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=str(Path(__file__).parent.parent.parent),
-            )
-        else:  # Unix
-            # Use nohup-style detachment
-            self._server_process = subprocess.Popen(
-                [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,  # Keep stderr for debugging
-                stdin=subprocess.DEVNULL,
-                start_new_session=True,  # Detach from parent
-                cwd=str(Path(__file__).parent.parent.parent),
-            )
+        # Redirect stderr to a log file to avoid pipe buffer filling up and blocking
+        log_path = get_server_log_path()
 
-        print(f"Spawned embedding server (PID {self._server_process.pid})", file=sys.stderr)
+        # Rotate log if too large (10MB)
+        try:
+            if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:
+                old_log = log_path.with_suffix(".log.old")
+                log_path.rename(old_log)
+        except Exception as e:
+            print(f"Warning: Failed to rotate log file: {e}", file=sys.stderr)
+
+        try:
+            # Open in append mode
+            log_file = open(log_path, "a")
+        except Exception as e:
+            print(f"Warning: Could not open log file {log_path}: {e}", file=sys.stderr)
+            log_file = subprocess.DEVNULL
+
+        try:
+            # Create a detached subprocess that survives parent exit
+            if os.name == 'nt':  # Windows
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                self._server_process = subprocess.Popen(
+                    [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
+                    creationflags=creationflags,
+                    stdout=subprocess.DEVNULL,
+                    stderr=log_file,
+                    cwd=str(Path(__file__).parent.parent.parent),
+                )
+            else:  # Unix
+                # Use nohup-style detachment
+                self._server_process = subprocess.Popen(
+                    [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=log_file,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,  # Detach from parent
+                    cwd=str(Path(__file__).parent.parent.parent),
+                )
+        finally:
+            if log_file != subprocess.DEVNULL:
+                log_file.close()
+
+        print(f"Spawned embedding server (PID {self._server_process.pid}) logging to {log_path}", file=sys.stderr)
 
     def _ensure_server(self):
         """Ensure the embedding server is running, spawning if needed.
@@ -159,10 +189,21 @@ class HttpEmbedding(EmbeddingInterface):
 
         # Check if process died
         if self._server_process and self._server_process.poll() is not None:
-            stderr_output = ""
-            if self._server_process.stderr:
-                stderr_output = self._server_process.stderr.read().decode('utf-8', errors='replace')
-            raise RuntimeError(f"Embedding server failed to start. Exit code: {self._server_process.returncode}\nStderr: {stderr_output}")
+            # Read last few lines of log file for error details
+            stderr_output = "Check log file for details"
+            try:
+                log_path = get_server_log_path()
+                if log_path.exists():
+                    # Read last 1KB
+                    size = log_path.stat().st_size
+                    with open(log_path, 'r') as f:
+                        if size > 1024:
+                            f.seek(size - 1024)
+                        stderr_output = f.read()
+            except Exception:
+                pass
+
+            raise RuntimeError(f"Embedding server failed to start. Exit code: {self._server_process.returncode}\nLog tail: {stderr_output}")
 
         raise RuntimeError(f"Embedding server failed to start within {STARTUP_TIMEOUT}s")
 
