@@ -58,6 +58,24 @@ Environment variables control defaults:
 ### 5. Entry Points
 - **CLI** (`code-rag`): Interactive query session
 - **MCP Server** (`code-rag-mcp`): Exposes search to AI assistants (Claude, etc.)
+- **Embedding Server** (`code-rag-server`): Shared model server for multiple MCP instances
+
+### 6. Shared Embedding Server
+When running multiple MCP instances (e.g., multiple VS Code windows), each would normally load its own transformer model (~300MB+ RAM each). The **shared embedding server** solves this:
+
+- **Auto-spawns** on first client request if not running
+- **Auto-terminates** when no clients remain (after idle timeout)
+- Uses **heartbeat** mechanism for client lifecycle tracking
+- **Lock file** prevents duplicate server instances
+
+Configuration (via environment):
+- `CODE_RAG_SHARED_SERVER=true` (enabled by default)
+- `CODE_RAG_SHARED_SERVER_PORT=8199`
+
+Files:
+- `src/embedding_server.py` - FastAPI server
+- `src/embeddings/http_embedding.py` - HTTP client for embedding
+- `src/reranker/http_reranker.py` - HTTP client for reranking
 
 ## Quick Start
 

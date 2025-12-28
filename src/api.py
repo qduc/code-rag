@@ -119,6 +119,11 @@ class CodeRAGAPI:
         # Metadata index for incremental reindexing (initialized per collection)
         self._metadata_indices: Dict[str, MetadataIndex] = {}
 
+        # Track if using shared server mode (for HTTP clients)
+        self._use_shared_server = self.config.is_shared_server_enabled()
+        self._shared_server_port = self.config.get_shared_server_port()
+        self._http_client_id: Optional[str] = None  # Shared client ID for HTTP mode
+
         # Initialize embedding model
         self.embedding_model = self._create_embedding_model(embedding_model, lazy_load=lazy_load_models)
 
@@ -129,9 +134,20 @@ class CodeRAGAPI:
         self.reranker: Optional[RerankerInterface] = None
         if reranker_enabled:
             try:
-                model_name = reranker_model or self.config.get_reranker_model()
-                idle_timeout = self.config.get_model_idle_timeout()
-                self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models, idle_timeout=idle_timeout)
+                if self._use_shared_server:
+                    # Use HTTP reranker (shares model with embedding server)
+                    from .reranker.http_reranker import HttpReranker
+                    # Share client ID with embedding model for unified heartbeat
+                    if hasattr(self.embedding_model, 'client_id'):
+                        self._http_client_id = self.embedding_model.client_id
+                    self.reranker = HttpReranker(
+                        port=self._shared_server_port,
+                        client_id=self._http_client_id or ""
+                    )
+                else:
+                    model_name = reranker_model or self.config.get_reranker_model()
+                    idle_timeout = self.config.get_model_idle_timeout()
+                    self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models, idle_timeout=idle_timeout)
             except Exception as e:
                 print(f"Warning: Failed to load reranker ({e}), disabling reranking")
                 self.reranker = None
@@ -147,7 +163,13 @@ class CodeRAGAPI:
             self.reranker.start_background_loading()
 
     def _create_embedding_model(self, model_name: str, lazy_load: bool = False) -> EmbeddingInterface:
-        """Create an embedding model instance based on the model name."""
+        """Create an embedding model instance based on the model name and config."""
+        # Use HTTP client if shared server mode is enabled
+        if self._use_shared_server:
+            from .embeddings.http_embedding import HttpEmbedding
+            return HttpEmbedding(port=self._shared_server_port)
+
+        # Otherwise, load models locally
         idle_timeout = self.config.get_model_idle_timeout()
         if model_name.startswith("text-embedding-"):
             return OpenAIEmbedding(model_name, idle_timeout=idle_timeout)

@@ -55,6 +55,12 @@ class Config:
         # Default: 1800 seconds (30 minutes)
         self.model_idle_timeout = self._get_int_env("CODE_RAG_MODEL_IDLE_TIMEOUT", 1800)
 
+        # Shared embedding server configuration
+        # When enabled, MCP instances share a single model via HTTP server
+        # Server auto-starts on demand and auto-terminates when idle
+        self.shared_server_enabled = os.getenv("CODE_RAG_SHARED_SERVER", "true").lower() in ("true", "1", "yes")
+        self.shared_server_port = self._get_int_env("CODE_RAG_SHARED_SERVER_PORT", 8199)
+
     @staticmethod
     def _get_default_database_path() -> str:
         """Get the default database path in the user's cache directory."""
@@ -141,6 +147,14 @@ class Config:
     def get_model_idle_timeout(self) -> int:
         """Get the model idle timeout in seconds (default: 1800 = 30 minutes)."""
         return self.model_idle_timeout
+
+    def is_shared_server_enabled(self) -> bool:
+        """Get whether shared embedding server mode is enabled."""
+        return self.shared_server_enabled
+
+    def get_shared_server_port(self) -> int:
+        """Get the shared embedding server port."""
+        return self.shared_server_port
 
     def _sanitize_chunk_defaults(self) -> None:
         """Ensure chunk defaults form a sane pair when env vars are absent or invalid."""

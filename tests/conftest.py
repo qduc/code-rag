@@ -15,6 +15,10 @@ def pytest_configure(config):
     """Register custom markers used throughout the tests."""
     config.addinivalue_line("markers", "asyncio: mark test as async")
 
+    # Disable shared server mode during tests to avoid connection issues
+    import os
+    os.environ["CODE_RAG_SHARED_SERVER"] = "false"
+
 
 @pytest.fixture(scope="session")
 def event_loop():

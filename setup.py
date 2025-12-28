@@ -33,11 +33,15 @@ setup(
         "tree-sitter-java>=0.21.0",
         "tree-sitter-cpp>=0.21.0",
         "tree-sitter-c>=0.21.0",
+        "fastapi>=0.104.0",
+        "uvicorn>=0.24.0",
+        "requests>=2.31.0",
     ],
     entry_points={
         "console_scripts": [
             "code-rag=src.main:main",
             "code-rag-mcp=src.mcp_server:main",
+            "code-rag-server=src.embedding_server:main",
         ],
     },
     classifiers=[
