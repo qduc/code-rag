@@ -47,3 +47,20 @@ class EmbeddingInterface(ABC):
             A list of embedding vectors
         """
         pass
+
+    @abstractmethod
+    def get_embedding_dimension(self) -> int:
+        """
+        Get the dimension of the embedding vectors.
+
+        Returns:
+            The dimension of embeddings produced by this model
+        """
+        pass
+
+    def clear_cache(self):
+        """
+        Clear memory cache (e.g. CUDA memory) without unloading the model.
+        Useful after memory-intensive operations like indexing.
+        """
+        pass

@@ -129,17 +129,23 @@ class EmbeddingServer:
                 self._embedding_model = OpenAIEmbedding(model_name)
             else:
                 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
-                # No idle timeout - server manages lifecycle
-                self._embedding_model = SentenceTransformerEmbedding(model_name, lazy_load=False, idle_timeout=0)
+                # Use configured idle timeout (default 30 min) to release VRAM
+                idle_timeout = self.config.get_model_idle_timeout()
+                self._embedding_model = SentenceTransformerEmbedding(
+                    model_name,
+                    lazy_load=False,
+                    idle_timeout=idle_timeout
+                )
 
             # Load reranker if enabled
             if self.config.is_reranker_enabled():
                 print(f"Loading reranker model: {self.config.get_reranker_model()}", file=sys.stderr)
                 from .reranker.cross_encoder_reranker import CrossEncoderReranker
+                idle_timeout = self.config.get_model_idle_timeout()
                 self._reranker = CrossEncoderReranker(
                     self.config.get_reranker_model(),
                     lazy_load=False,
-                    idle_timeout=0
+                    idle_timeout=idle_timeout
                 )
 
             self._models_loaded = True
@@ -241,6 +247,23 @@ class EmbeddingServer:
 
             dim = self._embedding_model.get_embedding_dimension()
             return {"dimension": dim}
+
+        @app.post("/clear_cache")
+        async def clear_cache(request: DimensionRequest):
+            """Clear memory cache (CUDA) without unloading models."""
+            self._update_heartbeat(request.client_id)
+
+            with self._models_lock:
+                if self._embedding_model:
+                    if hasattr(self._embedding_model, "clear_cache"):
+                        self._embedding_model.clear_cache()
+
+                # Also clear reranker cache if loaded
+                if self._reranker:
+                    if hasattr(self._reranker, "clear_cache"):
+                        self._reranker.clear_cache()
+
+            return {"status": "ok"}
 
         @app.post("/rerank")
         async def rerank(request: RerankRequest):

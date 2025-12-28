@@ -98,6 +98,12 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
                         self.model = None
                         # Force garbage collection to release GPU memory if applicable
                         gc.collect()
+                        try:
+                            import torch
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except ImportError:
+                            pass
 
     def _ensure_model_loaded(self):
         """Ensure the model is loaded before use (blocks if still loading)."""
@@ -174,6 +180,12 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
                 del self.model
                 self.model = None
                 gc.collect()
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except ImportError:
+                    pass
 
     def stop_cleanup_thread(self):
         """Stop the background cleanup thread."""
@@ -185,3 +197,15 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         """Cleanup when the object is destroyed."""
         self.stop_cleanup_thread()
         self.unload_model()
+
+    def clear_cache(self):
+        """Clear memory cache (CUDA memory) without unloading the model."""
+        with self._loading_lock:
+            # Force garbage collection
+            gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass

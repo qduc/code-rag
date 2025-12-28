@@ -334,6 +334,9 @@ class CodeRAGAPI:
 
             metadata_index.mark_reindex_complete()
 
+        # Clear VRAM cache after heavy indexing
+        self.embedding_model.clear_cache()
+
         return total_chunks
 
     def incremental_reindex(
@@ -458,6 +461,9 @@ class CodeRAGAPI:
 
         # Mark reindex complete
         metadata_index.mark_reindex_complete()
+
+        # Clear VRAM cache after heavy indexing
+        self.embedding_model.clear_cache()
 
         return {
             'added_count': len(added),

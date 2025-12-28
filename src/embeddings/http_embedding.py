@@ -258,3 +258,15 @@ class HttpEmbedding(EmbeddingInterface):
     def unload_model(self):
         """No-op for HTTP client - server manages model lifecycle."""
         pass
+
+    def clear_cache(self):
+        """Request server to clear memory cache."""
+        try:
+            # We don't retry this if it fails, as it's an optimization only
+            requests.post(
+                f"{self.base_url}/clear_cache",
+                json={"client_id": self.client_id},
+                timeout=CONNECTION_TIMEOUT
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            pass
