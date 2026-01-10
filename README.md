@@ -1,8 +1,28 @@
 # Code-RAG
 
+[![PyPI version](https://img.shields.io/pypi/v/code-rag-mcp.svg)](https://pypi.org/project/code-rag-mcp/)
+[![Build Status](https://github.com/qduc/code-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/qduc/code-rag/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Versions](https://img.shields.io/pypi/pyversions/code-rag-mcp.svg)](https://pypi.org/project/code-rag-mcp/)
+
 **Semantic code search for your entire codebase.** Ask questions in plain English, get relevant code snippets with source locations.
 
 Instead of grepping for function names, ask "authentication logic" and find all related auth code across your project.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Example (CLI)](#example-cli)
+- [Why Use Code-RAG?](#why-use-code-rag)
+- [Use with Claude Code (MCP Integration)](#use-with-claude-code-mcp-integration)
+- [Configuration](#configuration)
+- [How It Works](#how-it-works)
+- [API Usage](#api-usage)
+- [Supported Languages](#supported-languages)
+- [Requirements](#requirements)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Contributing](#contributing)
 
 ## Quick Start
 
@@ -14,31 +34,10 @@ source .venv/bin/activate
 # Install
 pip install -e .
 
-# Start the MCP server (default)
-code-rag
-
-# Or use the interactive CLI search
+# Use the interactive CLI search
 code-rag-cli
-```
 
-## Example (CLI)
-
-```
-$ code-rag-cli --path /home/user/myproject
-
-Processing codebase... Found 247 files
-Indexed 1,234 chunks in 12s
-
-Query: authentication logic
-
-Result 1 | Similarity: 0.85
-File: src/code_rag/auth/authenticator.py (lines 45-78)
-
-class Authenticator:
-    """Handle user authentication and session management."""
-
-    def authenticate(self, username: str, password: str) -> bool:
-        ...
+# To use as MCP server see below section
 ```
 
 ## Why Use Code-RAG?
@@ -52,24 +51,36 @@ class Authenticator:
 
 Code-RAG works as an MCP server, letting Claude automatically search your codebase during conversations.
 
+> **Note on `uv`:** Many examples below use [uv](https://github.com/astral-sh/uv) (specifically `uvx`) for fast, zero-config execution. If you don't have `uv` installed, you can use standard `pip` or `npx` (if using a wrapper).
+
 ### Quick Setup
 
-**Option 1: Using uvx (after publishing to PyPI)**
+**Option 1: Using uvx (Recommended)**
 ```bash
-# Claude Desktop (config.json)
-claude mcp add code-rag
+# Install uv first: https://github.com/astral-sh/uv
 
-# Or with Claude Code
+# Claude Code
 claude mcp add code-rag --transport stdio uvx code-rag-mcp
 ```
 
-**Option 2: Local installation**
+**Option 2: Using pip (Standard)**
 ```bash
-# Install in virtual environment
+# Install in your environment
+pip install code-rag-mcp
+
+# Register with Claude Code using the absolute path to the binary
+claude mcp add code-rag --transport stdio $(which code-rag-mcp)
+```
+
+**Option 3: Local development installation**
+```bash
+# Clone and install
+git clone https://github.com/qduc/code-rag.git
+cd code-rag
 pip install -e .
 
 # Register with Claude Code
-claude mcp add code-rag --transport stdio path/to/venv/bin/code-rag-mcp
+claude mcp add code-rag --transport stdio $(pwd)/.venv/bin/code-rag-mcp
 ```
 
 ### Configuration
@@ -103,12 +114,12 @@ claude mcp add code-rag --transport stdio uvx code-rag-mcp
 
 **Common Configuration Options**:
 - `CODE_RAG_EMBEDDING_MODEL` - Embedding model (default: `nomic-ai/CodeRankEmbed`)
-  - `nomic-ai/CodeRankEmbed` - Code-optimized, runs locally
-  - `text-embedding-3-small` - OpenAI embeddings (requires `OPENAI_API_KEY`)
+  - `nomic-ai/CodeRankEmbed` - Code-optimized, runs locally, requires GPU for best performance
+  - `text-embedding-3-small` - OpenAI embeddings, no GPU required (requires `OPENAI_API_KEY`)
 - `CODE_RAG_DATABASE_TYPE` - Database backend: `chroma` or `qdrant` (default: `chroma`)
 - `CODE_RAG_CHUNK_SIZE` - Chunk size in characters (default: `1024`)
-- `CODE_RAG_RERANKER_ENABLED` - Enable result reranking (default: `false`)
-- `CODE_RAG_SHARED_SERVER` - Share embedding server across instances (default: `true`)
+- `CODE_RAG_RERANKER_ENABLED` - Enable result reranking, may yield better results but slower (default: `false`)
+- `CODE_RAG_SHARED_SERVER` - Share embedding server across instances, reduce memory footprint (default: `true`)
 
 **Example with OpenAI embeddings**:
 ```json
