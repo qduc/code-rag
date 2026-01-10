@@ -9,73 +9,63 @@ Code-RAG is a CLI tool that makes codebases searchable using semantic search. It
 ## Architecture Overview
 
 ```
-┌─────────────────┐
-│  CLI / MCP      │  Entry points (command line + AI assistant integration)
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  File Processor │  Discovers files → Chunks code → Yields metadata
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Embedding      │  Converts text chunks → vectors (pluggable models)
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Database       │  Stores vectors + metadata (ChromaDB or Qdrant)
-└─────────────────┘
+          ┌─────────────┐
+          │  CLI / MCP  │  Entry points
+          └──────┬──────┘
+                 │
+          ┌──────▼──────┐
+          │    API      │  Orchestration layer (CodeRAGAPI)
+          └──────┬──────┘
+                 │
+    ┌────────────┼────────────┬────────────┐
+    │            │            │            │
+┌───▼───┐    ┌───▼───┐    ┌───▼───┐    ┌───▼───┐
+│Process│    │Search │    │Manage │    │ Embed │
+└───┬───┘    └───┬───┘    └───┬───┘    └───┬───┘
+    │            │            │            │
+┌───▼───┐    ┌───▼───┐    ┌───▼───┐    ┌───▼───┐
+│Chunker│    │Rerank │    │Index  │    │Storage│
+└───────┘    └───────┘    └───────┘    └───────┘
 ```
 
-**Key Design**: Plugin architecture. Database and embedding implementations are swappable via configuration.
+**Key Design**: Orchestrated Plugin architecture. The `CodeRAGAPI` centralizes logic, while specialized components handle chunking, indexing, search analysis, and storage.
 
 ## Components
 
-### 1. File Processor
-- **What**: Finds source files, reads them, chunks them
-- **How**: Respects `.gitignore`, uses syntax-aware chunking when possible (falls back to line-based)
-- **Output**: Text chunks with metadata (file path, chunk position)
+### 1. API Layer (`src/code_rag/api.py`)
+- **What**: The central hub for all Code-RAG operations.
+- **How**: Integrates embedding, database, reranking, and indexing logic. Used by both CLI and MCP.
+- **Features**: Session tracking, auto-generated collection names, and unified indexing flow.
 
-### 2. Database Layer
-- **Interface**: Abstract base class for vector storage
-- **Implementations**: ChromaDB (default, embedded) or Qdrant (networked)
-- **Operations**: Store embeddings, similarity search, state tracking
+### 2. File Processor & Chunker
+- **What**: Discovers source files and breaks them into logical chunks.
+- **How**: Uses `SyntaxChunker` (tree-sitter based) for code-aware splitting, falling back to line-based.
+- **Output**: Text chunks with rich metadata (file path, line numbers, symbol names).
 
-### 3. Embedding Layer
-- **Interface**: Abstract base class for text → vector conversion
-- **Models**:
-  - `all-MiniLM-L6-v2` (default, general purpose)
-  - `CodeRankEmbed` (code-optimized)
-  - OpenAI's `text-embedding-3-small`
-- **Pattern**: Stateless, reusable across all operations
+### 3. Metadata Index (`src/code_rag/index/metadata_index.py`)
+- **What**: Tracks state of indexed files for incremental updates.
+- **How**: Stores `mtime`, `size`, and `sha256` hashes.
+- **Benefit**: Only re-indexes modified files, significantly speeding up subsequent runs.
 
-### 4. Configuration
-Environment variables control defaults:
-- `CODE_RAG_DATABASE_TYPE`: "chroma" or "qdrant"
-- `CODE_RAG_EMBEDDING_MODEL`: Model name
-- `CODE_RAG_CHUNK_SIZE`: Characters per chunk
-- See `src/code_rag/config/config.py` for full list
+### 4. Hybrid Search & Query Analyzer
+- **What**: Improves search relevance by combining vector search with exact identifier matching.
+- **How**: `QueryAnalyzer` detects code identifiers (CamelCase, snake_case) in queries and boosts results containing those identifiers.
 
-### 5. Entry Points
-- **CLI** (`code-rag-cli`): Interactive query session
-- **MCP Server** (`code-rag` or `code-rag-mcp`): Exposes search to AI assistants (Claude, etc.)
-- **Embedding Server** (`code-rag-server`): Shared model server for multiple MCP instances
+### 5. Semantic Reranker (`src/code_rag/reranker/`)
+- **What**: Refines search results using Cross-Encoder models.
+- **How**: Re-scores top-K candidates from vector search for higher precision.
+- **Models**: Defaults to `mixedbread-ai/mxbai-rerank-xsmall-v1` or `cross-encoder/ms-marco-MiniLM-L-6-v2`.
 
-### 6. Shared Embedding Server
-When running multiple MCP instances (e.g., multiple VS Code windows), each would normally load its own transformer model (~300MB+ RAM each). The **shared embedding server** solves this:
+### 6. Embedding & Database Layer
+- **Embeddings**: Swappable backends (SentenceTransformers, OpenAI, or Shared HTTP).
+- **Databases**: ChromaDB (default) or Qdrant.
+- **Features**: Automatic dimension mismatch handling and model idle timeouts.
 
-- **Auto-spawns** on first client request if not running
-- **Auto-terminates** when no clients remain (after idle timeout)
-- Uses **heartbeat** mechanism for client lifecycle tracking
-- **Lock file** prevents duplicate server instances
-
-Configuration (via environment):
-- `CODE_RAG_SHARED_SERVER=true` (enabled by default)
-- `CODE_RAG_SHARED_SERVER_PORT=8199`
-
-Files:
-- `src/code_rag/embedding_server.py` - FastAPI server
-- `src/code_rag/embeddings/http_embedding.py` - HTTP client for embedding
-- `src/code_rag/reranker/http_reranker.py` - HTTP client for reranking
+### 7. Shared Embedding & Reranking Server
+- **What**: FastAPI-based server that hosts both embedding and reranker models.
+- **Why**: Prevents multiple MCP instances from each loading ~500MB+ of models into RAM.
+- **Management**: Auto-spawns on first request, auto-terminates after idle timeout, uses heartbeats.
+- **Files**: `src/code_rag/embedding_server.py`, `http_embedding.py`, `http_reranker.py`.
 
 ## Quick Start
 
@@ -99,16 +89,19 @@ code-rag-cli --reindex
 ## Common Tasks
 
 **Add a new embedding model?**
-→ Extend `EmbeddingInterface`, add to initialization in CLI
+→ Extend `EmbeddingInterface`, add to `CodeRAGAPI._create_embedding_model`
 
-**Add a new database backend?**
-→ Extend `DatabaseInterface`, add to initialization in CLI
+**Add a new reranker?**
+→ Extend `RerankerInterface`, update `CodeRAGAPI.__init__`
 
-**Change chunk size or ignore patterns?**
-→ Modify configuration or file processor settings
+**Adjust reindexing behavior?**
+→ Modify `CODE_RAG_REINDEX_DEBOUNCE_MINUTES` or `CODE_RAG_VERIFY_CHANGES_WITH_HASH` in config.
+
+**Change identifier boosting?**
+→ Update `QueryAnalyzer.get_boost_score` in `src/code_rag/search/query_analyzer.py`
 
 **Add support for new languages?**
-→ Extend `SyntaxChunker.LANGUAGE_PACKAGES` with tree-sitter binding
+→ Extend `SyntaxChunker.LANGUAGE_PACKAGES` with tree-sitter bindings.
 
 **Add new MCP tools?**
 → Update `list_tools()` and `call_tool()` in `src/code_rag/mcp_server.py`

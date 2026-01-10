@@ -21,6 +21,7 @@ from .index.metadata_index import FileMetadata, MetadataIndex
 from .processor.file_processor import FileProcessor
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
 from .reranker.reranker_interface import RerankerInterface
+from .search.query_analyzer import QueryAnalyzer
 
 
 def generate_collection_name(codebase_path: str) -> str:
@@ -607,20 +608,23 @@ class CodeRAGAPI:
                     query, documents, top_k=n_results
                 )
 
-                # Reorder results based on reranking
-                reranked_docs = []
-                reranked_metadata = []
-                reranked_scores = []
+                # Only update results if reranker returned valid results
+                # If reranker returns empty list (e.g., server down), fall back to original
+                if reranked_indices:
+                    # Reorder results based on reranking
+                    reranked_docs = []
+                    reranked_metadata = []
+                    reranked_scores = []
 
-                for orig_idx, rerank_score in reranked_indices:
-                    reranked_docs.append(results["documents"][0][orig_idx])
-                    reranked_metadata.append(results["metadatas"][0][orig_idx])
-                    reranked_scores.append(rerank_score)
+                    for orig_idx, rerank_score in reranked_indices:
+                        reranked_docs.append(results["documents"][0][orig_idx])
+                        reranked_metadata.append(results["metadatas"][0][orig_idx])
+                        reranked_scores.append(rerank_score)
 
-                # Update results with reranked data
-                results["documents"][0] = reranked_docs
-                results["metadatas"][0] = reranked_metadata
-                results["distances"][0] = reranked_scores
+                    # Update results with reranked data
+                    results["documents"][0] = reranked_docs
+                    results["metadatas"][0] = reranked_metadata
+                    results["distances"][0] = reranked_scores
 
             except Exception:
                 # Fall back to original results if reranking fails
@@ -652,6 +656,33 @@ class CodeRAGAPI:
                 "similarity": similarity,
             }
             formatted_results.append(result)
+
+        # Apply identifier-based boosting (Phase 1: Hybrid Search)
+        # Analyze query for code identifiers and boost exact matches
+        query_analyzer = QueryAnalyzer(query)
+        if query_analyzer.has_identifiers() and formatted_results:
+            for result in formatted_results:
+                # Calculate boost multiplier based on identifier matches
+                boost = query_analyzer.get_boost_score(result["content"])
+
+                # Store original similarity for transparency
+                result["original_similarity"] = result["similarity"]
+
+                # Apply boost to similarity score
+                result["similarity"] = result["similarity"] * boost
+
+                # Track if this result was boosted
+                result["boosted"] = boost > 1.0
+
+            # Re-sort by boosted similarity (descending)
+            formatted_results.sort(key=lambda x: x["similarity"], reverse=True)
+
+            # Limit to requested number of results after boosting
+            formatted_results = formatted_results[:n_results]
+        else:
+            # No identifiers detected - mark all results as not boosted for consistency
+            for result in formatted_results:
+                result["boosted"] = False
 
         # Expand context if requested
         if expand_context and formatted_results:
