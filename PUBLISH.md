@@ -2,6 +2,23 @@
 
 This guide outlines the steps to publish the **Code-RAG** project to PyPI.
 
+## Automated Release
+
+You can use the provided release script to automate the version bumping, tagging, building, and publishing process:
+
+```bash
+python3 scripts/release.py
+```
+
+The script will:
+1. Ask for the version bump type (patch, minor, major).
+2. Update the version in `pyproject.toml` and `src/code_rag/__init__.py`.
+3. Commit and tag the version in git.
+4. Build the package using `python -m build`.
+5. Upload the package to PyPI using `twine`.
+
+---
+
 ## 1. Prerequisites
 - Create an account on [PyPI](https://pypi.org/account/register/).
 - (Optional but recommended) Create an account on [TestPyPI](https://test.pypi.org/account/register/) to test the upload first.

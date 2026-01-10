@@ -78,6 +78,7 @@ packages = [
     "code_rag.index",
     "code_rag.processor",
     "code_rag.reranker",
+    "code_rag.search"
 ]
 
 [tool.setuptools.package-dir]
