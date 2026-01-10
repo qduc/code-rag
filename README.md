@@ -51,12 +51,85 @@ class Authenticator:
 
 Code-RAG works as an MCP server, letting Claude automatically search your codebase during conversations.
 
+### Quick Setup
+
+**Option 1: Using uvx (after publishing to PyPI)**
 ```bash
+# Claude Desktop (config.json)
+claude mcp add code-rag
+
+# Or with Claude Code
+claude mcp add code-rag --transport stdio uvx code-rag-mcp
+```
+
+**Option 2: Local installation**
+```bash
+# Install in virtual environment
+pip install -e .
+
 # Register with Claude Code
 claude mcp add code-rag --transport stdio path/to/venv/bin/code-rag-mcp
 ```
 
-Then talk to Claude:
+### Configuration
+
+The MCP server reads configuration from environment variables or config files. Configure via your MCP client's settings:
+
+**Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`)**:
+```json
+{
+  "mcpServers": {
+    "code-rag": {
+      "command": "uvx",
+      "args": ["code-rag-mcp"],
+      "env": {
+        "CODE_RAG_EMBEDDING_MODEL": "nomic-ai/CodeRankEmbed",
+        "CODE_RAG_DATABASE_TYPE": "chroma",
+        "CODE_RAG_RERANKER_ENABLED": "true"
+      }
+    }
+  }
+}
+```
+
+**Claude Code (via claude mcp add)**:
+```bash
+# Basic setup
+claude mcp add code-rag --transport stdio uvx code-rag-mcp
+
+# Then configure via environment variables or config files
+```
+
+**Common Configuration Options**:
+- `CODE_RAG_EMBEDDING_MODEL` - Embedding model (default: `nomic-ai/CodeRankEmbed`)
+  - `nomic-ai/CodeRankEmbed` - Code-optimized, runs locally
+  - `text-embedding-3-small` - OpenAI embeddings (requires `OPENAI_API_KEY`)
+- `CODE_RAG_DATABASE_TYPE` - Database backend: `chroma` or `qdrant` (default: `chroma`)
+- `CODE_RAG_CHUNK_SIZE` - Chunk size in characters (default: `1024`)
+- `CODE_RAG_RERANKER_ENABLED` - Enable result reranking (default: `false`)
+- `CODE_RAG_SHARED_SERVER` - Share embedding server across instances (default: `true`)
+
+**Example with OpenAI embeddings**:
+```json
+{
+  "mcpServers": {
+    "code-rag": {
+      "command": "uvx",
+      "args": ["code-rag-mcp"],
+      "env": {
+        "CODE_RAG_EMBEDDING_MODEL": "text-embedding-3-small",
+        "OPENAI_API_KEY": "sk-...",
+        "CODE_RAG_RERANKER_ENABLED": "true"
+      }
+    }
+  }
+}
+```
+
+### Usage
+
+Once configured, Claude can automatically search your codebase:
+
 ```
 You: "Find the database connection logic"
 
@@ -64,7 +137,7 @@ Claude: [Automatically searches and finds the code]
         "I found the database connection logic in src/db/connection.py..."
 ```
 
-See [docs/mcp.md](docs/mcp.md) for detailed setup.
+See [docs/mcp.md](docs/mcp.md) for detailed setup and troubleshooting.
 
 ## Basic Usage
 
@@ -87,7 +160,20 @@ code-rag --database qdrant
 
 ## Configuration
 
-Set via environment variables:
+### Priority Order
+
+Configuration is loaded in this order (higher priority overrides lower):
+
+1. **Environment variables** (highest priority)
+2. Custom config file via `CODE_RAG_CONFIG_FILE` environment variable
+3. Project config: `./code-rag.config`
+4. User config: `~/.config/code-rag/config` (auto-created with defaults)
+
+**For MCP servers**: Set environment variables in your MCP client config (see MCP Integration section above).
+
+**For CLI usage**: Use environment variables or config files.
+
+### Environment Variables
 
 ```bash
 # Use code-optimized embeddings (recommended)
@@ -103,20 +189,24 @@ export CODE_RAG_DATABASE_TYPE="qdrant"
 # Adjust chunk size
 export CODE_RAG_CHUNK_SIZE="2048"
 
+# Enable reranking for better results
+export CODE_RAG_RERANKER_ENABLED="true"
+
 # Add custom ignore patterns (comma-separated)
 export CODE_RAG_ADDITIONAL_IGNORE_PATTERNS="*.tmp,*.bak,logs/"
 ```
 
+### Config File Format
 
-### Configuration Files
+Config files use the same format (key=value):
 
-Code-RAG looks for configuration in the following order (first found wins):
-
-1. `CODE_RAG_CONFIG_FILE` environment variable
-2. `code-rag.config` in the current directory (project-specific)
-3. `~/.config/code-rag/config` (user-global)
-   - **Auto-created with default values** if it doesn't exist.
-4. Shell environment variables (highest priority - these override files)
+```bash
+# ~/.config/code-rag/config or ./code-rag.config
+CODE_RAG_EMBEDDING_MODEL=nomic-ai/CodeRankEmbed
+CODE_RAG_DATABASE_TYPE=chroma
+CODE_RAG_CHUNK_SIZE=1024
+CODE_RAG_RERANKER_ENABLED=false
+```
 
 Full configuration options in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md#configuration-system).
 

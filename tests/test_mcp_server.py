@@ -1034,7 +1034,10 @@ class TestIntegration:
     async def test_multiple_codebase_searches(self, api_instance):
         """Test searching different codebases in same session."""
         # Create two temporary codebases
-        with tempfile.TemporaryDirectory() as temp1, tempfile.TemporaryDirectory() as temp2:
+        with (
+            tempfile.TemporaryDirectory() as temp1,
+            tempfile.TemporaryDirectory() as temp2,
+        ):
             # Create files in first codebase
             (Path(temp1) / "test1.py").write_text("def function1():\n    pass")
 
