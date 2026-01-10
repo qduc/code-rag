@@ -10,25 +10,17 @@ These tests verify:
 7. Configuration and environment variable handling
 """
 
-import asyncio
-import json
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import src.mcp_server as mcp_mod
 from src.api import CodeRAGAPI
-from src.mcp_server import (
-    format_search_results,
-    server,
-    call_tool,
-    list_tools,
-)
+from src.mcp_server import call_tool, format_search_results, list_tools
 
 # ============================================================================
 # Fixtures
@@ -49,7 +41,8 @@ def temp_codebase():
     src_dir.mkdir()
 
     # Create sample Python files
-    (src_dir / "auth.py").write_text("""
+    (src_dir / "auth.py").write_text(
+        """
 def login(username, password):
     '''Authenticate user with username and password'''
     # Check credentials
@@ -69,9 +62,11 @@ def hash_password(password):
     '''Hash password using bcrypt'''
     import bcrypt
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-""")
+"""
+    )
 
-    (src_dir / "database.py").write_text("""
+    (src_dir / "database.py").write_text(
+        """
 class Database:
     def __init__(self, connection_string):
         '''Initialize database connection'''
@@ -88,9 +83,11 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
         return cursor.fetchone()
-""")
+"""
+    )
 
-    (src_dir / "main.py").write_text("""
+    (src_dir / "main.py").write_text(
+        """
 from auth import login
 from database import Database
 
@@ -110,16 +107,19 @@ class Application:
     def run(self):
         '''Run the application'''
         print("Starting application...")
-""")
+"""
+    )
 
     # Create a package.json for diversity
-    (Path(temp_dir) / "package.json").write_text("""{
+    (Path(temp_dir) / "package.json").write_text(
+        """{
   "name": "test-app",
   "version": "1.0.0",
   "description": "Test application",
   "main": "index.js"
 }
-""")
+"""
+    )
 
     yield str(temp_dir)
 
@@ -411,7 +411,9 @@ class TestCallToolValidation:
         """Test that error is returned when codebase_path is missing."""
         # Mock the global api
         with patch("src.mcp_server.api", None):
-            result = await call_tool("search_codebase", {"query": "test"}, _api_wait_timeout=0.1)
+            result = await call_tool(
+                "search_codebase", {"query": "test"}, _api_wait_timeout=0.1
+            )
             assert len(result) == 1
             assert "Error: Code-RAG API not initialized" in result[0].text
 
@@ -420,7 +422,9 @@ class TestCallToolValidation:
         """Test that error is returned when query is missing."""
         with patch("src.mcp_server.api", None):
             result = await call_tool(
-                "search_codebase", {"codebase_path": "/path/to/code"}, _api_wait_timeout=0.1
+                "search_codebase",
+                {"codebase_path": "/path/to/code"},
+                _api_wait_timeout=0.1,
             )
             assert len(result) == 1
             assert "Error: Code-RAG API not initialized" in result[0].text
@@ -440,13 +444,16 @@ class TestCallToolValidation:
             pass
 
         # Start a background thread that sets the api after a short delay
-        import threading, time
+        import threading
+        import time
 
         def delayed_init():
             time.sleep(0.2)
+
             class DummyAPI:
                 def ensure_indexed(self, *a, **k):
                     return {"success": True}
+
                 def search(self, *a, **k):
                     return [
                         {
@@ -459,6 +466,7 @@ class TestCallToolValidation:
                             "similarity": 0.9,
                         }
                     ]
+
             mcp_mod.api = DummyAPI()
             try:
                 mcp_mod.api_ready_event.set()
@@ -485,7 +493,9 @@ class TestCallToolValidation:
             pass
 
         # Do not initialize API; call_tool should return the error after wait
-        result = await call_tool("search_codebase", {"query": "test"}, _api_wait_timeout=0.1)
+        result = await call_tool(
+            "search_codebase", {"query": "test"}, _api_wait_timeout=0.1
+        )
         assert len(result) == 1
         assert "Error: Code-RAG API not initialized" in result[0].text
 
@@ -653,7 +663,9 @@ class TestCodeRAGAPIIntegration:
             reranker_enabled=False,
         )
 
-        assert api.embedding_model_name == "sentence-transformers/paraphrase-MiniLM-L6-v2"
+        assert (
+            api.embedding_model_name == "sentence-transformers/paraphrase-MiniLM-L6-v2"
+        )
         assert api.reranker_enabled is False
 
         api.close()
@@ -684,12 +696,17 @@ class TestCodeRAGAPIIntegration:
     def test_api_ensure_indexed_caches_result(self, api_instance, temp_codebase):
         """Test that ensure_indexed caches results for repeated calls."""
         # First call
-        result1 = api_instance.ensure_indexed(
+        # result1 = api_instance.ensure_indexed(
+        #     temp_codebase,
+        #     collection_name="test_codebase",
+        #     validate_codebase=False,
+        # )
+        # # chunks_1 = result1["total_chunks"]
+        api_instance.ensure_indexed(
             temp_codebase,
             collection_name="test_codebase",
             validate_codebase=False,
         )
-        chunks_1 = result1["total_chunks"]
 
         # Second call should return cached result
         result2 = api_instance.ensure_indexed(
@@ -954,7 +971,7 @@ class TestPerformanceAndScaling:
         api_instance, codebase_path = indexed_api
 
         start = time.time()
-        results = api_instance.search(
+        _ = api_instance.search(
             "function definition", n_results=10, collection_name="test_codebase"
         )
         elapsed = time.time() - start

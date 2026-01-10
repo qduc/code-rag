@@ -1,13 +1,12 @@
 """File processor for discovering and reading source code files."""
 
-import os
 import fnmatch
 import hashlib
+import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from .syntax_chunker import SyntaxChunker
-
 
 # Patterns for test files that can be optionally excluded
 TEST_FILE_PATTERNS = [
@@ -53,7 +52,7 @@ def byte_offset_to_line_number(content: str, byte_offset: int) -> int:
         Line number (1-indexed)
     """
     # Count newlines up to the byte offset
-    return content[:byte_offset].count('\n') + 1
+    return content[:byte_offset].count("\n") + 1
 
 
 class FileProcessor:
@@ -62,17 +61,61 @@ class FileProcessor:
     # Common source code file extensions
     SOURCE_EXTENSIONS = {
         # Programming languages
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp",
-        ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".clj",
-        ".lua", ".r", ".m", ".mm", ".pl", ".pm", ".sh", ".bash", ".zsh",
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".clj",
+        ".lua",
+        ".r",
+        ".m",
+        ".mm",
+        ".pl",
+        ".pm",
+        ".sh",
+        ".bash",
+        ".zsh",
         # Web
-        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".vue",
+        ".svelte",
         # Data/Config
-        ".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg", ".conf",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".xml",
+        ".ini",
+        ".cfg",
+        ".conf",
         # Documentation
-        ".md", ".rst", ".txt",
+        ".md",
+        ".rst",
+        ".txt",
         # Build/DevOps
-        ".dockerfile", ".makefile", ".gradle", ".cmake",
+        ".dockerfile",
+        ".makefile",
+        ".gradle",
+        ".cmake",
     }
 
     # Mapping from extension to tree-sitter language name
@@ -116,9 +159,7 @@ class FileProcessor:
         self.exclude_tests = exclude_tests
         self.include_file_header = include_file_header
         self._gitignore_patterns: Set[str] = set()
-        self.syntax_chunker = SyntaxChunker(
-            include_file_header=include_file_header
-        )
+        self.syntax_chunker = SyntaxChunker(include_file_header=include_file_header)
 
     def _default_ignore_patterns(self) -> List[str]:
         """Return default patterns to ignore."""
@@ -269,7 +310,13 @@ class FileProcessor:
 
         # Check special filenames without extensions
         name_lower = path.name.lower()
-        if name_lower in {"makefile", "dockerfile", "vagrantfile", "gemfile", "rakefile"}:
+        if name_lower in {
+            "makefile",
+            "dockerfile",
+            "vagrantfile",
+            "gemfile",
+            "rakefile",
+        }:
             return True
 
         return False
@@ -294,15 +341,13 @@ class FileProcessor:
 
             # Filter out ignored directories (modifying dirnames in-place)
             dirnames[:] = [
-                d for d in dirnames
-                if not self._should_ignore(current_dir / d, root)
+                d for d in dirnames if not self._should_ignore(current_dir / d, root)
             ]
 
             # Optionally filter out test directories
             if self.exclude_tests:
                 dirnames[:] = [
-                    d for d in dirnames
-                    if d.lower() not in TEST_DIR_PATTERNS
+                    d for d in dirnames if d.lower() not in TEST_DIR_PATTERNS
                 ]
 
             # Process files
@@ -407,7 +452,11 @@ class FileProcessor:
 
     def _sanitize_chunk_parameters(self, chunk_size: Optional[int]) -> int:
         """Ensure chunk size is a sane positive number."""
-        base_size = chunk_size if chunk_size and chunk_size > 0 else self.syntax_chunker.chunk_size or 1
+        base_size = (
+            chunk_size
+            if chunk_size and chunk_size > 0
+            else self.syntax_chunker.chunk_size or 1
+        )
         return max(1, int(base_size))
 
     def process_file(
@@ -478,7 +527,9 @@ class FileProcessor:
                 "end_byte": end_byte,
                 # Adjacency metadata for chunk traversal
                 "prev_id": i - 1 if i > 0 else -1,  # -1 indicates no previous
-                "next_id": i + 1 if i < total_chunks - 1 else -1,  # -1 indicates no next
+                "next_id": (
+                    i + 1 if i < total_chunks - 1 else -1
+                ),  # -1 indicates no next
             }
 
             # Add AST metadata if available (from syntax chunker)
@@ -496,11 +547,13 @@ class FileProcessor:
                 if chunk.get("has_signature_context"):
                     metadata["has_signature_context"] = True
 
-            result.append({
-                "id": f"{file_path}:chunk_{i}",
-                "content": chunk_text,
-                "metadata": metadata,
-            })
+            result.append(
+                {
+                    "id": f"{file_path}:chunk_{i}",
+                    "content": chunk_text,
+                    "metadata": metadata,
+                }
+            )
 
         return result
 
@@ -516,10 +569,7 @@ class FileProcessor:
         """
         try:
             stat = os.stat(file_path)
-            return {
-                'mtime': stat.st_mtime,
-                'size': stat.st_size
-            }
+            return {"mtime": stat.st_mtime, "size": stat.st_size}
         except OSError as e:
             print(f"Error getting stats for {file_path}: {e}")
             return None
@@ -536,8 +586,8 @@ class FileProcessor:
         """
         try:
             hasher = hashlib.sha256()
-            with open(file_path, 'rb') as f:
-                for chunk in iter(lambda: f.read(8192), b''):
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
                     hasher.update(chunk)
             return hasher.hexdigest()
         except Exception as e:

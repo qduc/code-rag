@@ -1,11 +1,10 @@
 """Syntax-aware chunking using Tree-sitter."""
 
-from typing import List, Dict, Optional, Tuple
 import importlib
 import logging
-import os
-from tree_sitter import Language, Parser, Node
-from .. import logger
+from typing import Dict, List, Optional, Tuple
+
+from tree_sitter import Language, Node, Parser
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -18,17 +17,17 @@ HEADER_NODE_TYPES = {
     "import_from_statement",
     "future_import_statement",
     # JavaScript/TypeScript
-    "import_statement",
+    # "import_statement",  # Duplicate of Python
     "import_declaration",
     "export_statement",
     # Go
-    "import_declaration",
+    # "import_declaration",  # Duplicate of JS/TS
     "package_clause",
     # Rust
     "use_declaration",
     "extern_crate_declaration",
     # Java
-    "import_declaration",
+    # "import_declaration",  # Duplicate of JS/TS
     "package_declaration",
     # C/C++
     "preproc_include",
@@ -49,7 +48,7 @@ DEFINITION_NODE_TYPES = {
     "arrow_function",
     "function",
     # Go
-    "function_declaration",
+    # "function_declaration",  # Duplicate of JS/TS
     "method_declaration",
     "type_declaration",
     # Rust
@@ -59,11 +58,11 @@ DEFINITION_NODE_TYPES = {
     "enum_item",
     "trait_item",
     # Java
-    "method_declaration",
-    "class_declaration",
+    # "method_declaration",  # Duplicate of Go
+    # "class_declaration",  # Duplicate of JS/TS
     "interface_declaration",
     # C/C++
-    "function_definition",
+    # "function_definition",  # Duplicate of Python
     "class_specifier",
     "struct_specifier",
 }
@@ -171,8 +170,8 @@ class SyntaxChunker:
 
             # Extract file header (imports, constants, etc.) if enabled
             if self.include_file_header:
-                self._file_header, self._file_header_end_byte = self._extract_file_header(
-                    tree.root_node, content
+                self._file_header, self._file_header_end_byte = (
+                    self._extract_file_header(tree.root_node, content)
                 )
             else:
                 self._file_header = None
@@ -192,7 +191,9 @@ class SyntaxChunker:
         if self.chunk_size < 1:
             self.chunk_size = 1
 
-    def _extract_file_header(self, root_node: Node, content: str) -> Tuple[Optional[str], int]:
+    def _extract_file_header(
+        self, root_node: Node, content: str
+    ) -> Tuple[Optional[str], int]:
         """
         Extract file-level header content (imports, constants, type definitions).
 
@@ -232,7 +233,9 @@ class SyntaxChunker:
 
         return header_text, end
 
-    def _add_adjacency_metadata(self, chunks: List[Dict[str, any]]) -> List[Dict[str, any]]:
+    def _add_adjacency_metadata(
+        self, chunks: List[Dict[str, any]]
+    ) -> List[Dict[str, any]]:
         """
         Add prev_id and next_id fields to each chunk for adjacency traversal.
 
@@ -299,7 +302,9 @@ class SyntaxChunker:
                     break
         return atoms
 
-    def _create_segments(self, atoms: List[Node], content_len: int) -> List[Tuple[int, int]]:
+    def _create_segments(
+        self, atoms: List[Node], content_len: int
+    ) -> List[Tuple[int, int]]:
         """
         Create a continuous list of (start, end) ranges covering the whole content.
         Includes both the atoms and the gaps between them.
@@ -322,9 +327,13 @@ class SyntaxChunker:
 
         return segments
 
-    def _group_segments(self, segments: List[Tuple[int, int]], content: str) -> List[Dict[str, any]]:
+    def _group_segments(
+        self, segments: List[Tuple[int, int]], content: str
+    ) -> List[Dict[str, any]]:
         """Group segments into chunks respecting chunk_size while tracking byte offsets."""
-        logger.debug(f"_group_segments: Processing {len(segments)} segments, content length: {len(content)}")
+        logger.debug(
+            f"_group_segments: Processing {len(segments)} segments, content length: {len(content)}"
+        )
         chunks = []
         current_chunk_segments = []
         current_chunk_len = 0
@@ -333,7 +342,9 @@ class SyntaxChunker:
         for start, end in segments:
             iteration_count += 1
             if iteration_count % 100 == 0:
-                logger.debug(f"_group_segments: iteration {iteration_count}, chunks created: {len(chunks)}")
+                logger.debug(
+                    f"_group_segments: iteration {iteration_count}, chunks created: {len(chunks)}"
+                )
             logger.debug(f"  Processing segment [{start}:{end}], length: {end-start}")
             segment_len = end - start
 
@@ -383,7 +394,9 @@ class SyntaxChunker:
         Returns:
             List of chunk dictionaries
         """
-        logger.debug(f"_split_large_segment: Splitting segment [{start}:{end}], length: {end-start}")
+        logger.debug(
+            f"_split_large_segment: Splitting segment [{start}:{end}], length: {end-start}"
+        )
         logger.debug(f"  chunk_size={self.chunk_size}")
         segment_text = content[start:end]
         chunks = []
@@ -404,32 +417,46 @@ class SyntaxChunker:
         body_start = signature_end
         current_pos = body_start
 
-        logger.debug(f"  Starting split loop: body_start={body_start}, segment_text length={len(segment_text)}, effective_chunk_size={effective_chunk_size}")
+        logger.debug(
+            f"  Starting split loop: body_start={body_start}, segment_text length={len(segment_text)}, "
+            f"effective_chunk_size={effective_chunk_size}"
+        )
 
         while current_pos < len(segment_text):
             iteration_count += 1
             if iteration_count > 1000:
-                logger.error(f"INFINITE LOOP DETECTED in _split_large_segment after 1000 iterations!")
-                logger.error(f"  current_pos={current_pos}, len(segment_text)={len(segment_text)}")
+                logger.error(
+                    "INFINITE LOOP DETECTED in _split_large_segment after 1000 iterations!"
+                )
+                logger.error(
+                    f"  current_pos={current_pos}, len(segment_text)={len(segment_text)}"
+                )
                 logger.error(f"  effective_chunk_size={effective_chunk_size}")
                 logger.error(f"  chunks created so far: {len(chunks)}")
                 break
 
             if iteration_count % 10 == 0:
-                logger.debug(f"  Split iteration {iteration_count}: current_pos={current_pos}/{len(segment_text)}, chunks={len(chunks)}")
+                logger.debug(
+                    f"  Split iteration {iteration_count}: current_pos={current_pos}/{len(segment_text)}, "
+                    f"chunks={len(chunks)}"
+                )
 
             chunk_end = min(current_pos + effective_chunk_size, len(segment_text))
 
             # Try to find a good break point (newline)
             if chunk_end < len(segment_text):
-                break_point = segment_text.rfind("\n", current_pos + effective_chunk_size // 2, chunk_end)
+                break_point = segment_text.rfind(
+                    "\n", current_pos + effective_chunk_size // 2, chunk_end
+                )
                 if break_point > current_pos:
                     chunk_end = break_point + 1
 
             # Build chunk text with preserved context
             chunk_parts = []
             if signature and chunks:  # Subsequent chunks get signature prepended
-                chunk_parts.append(f"# [continued from above]\n{signature}\n    # ...\n")
+                chunk_parts.append(
+                    f"# [continued from above]\n{signature}\n    # ...\n"
+                )
 
             body_text = segment_text[current_pos:chunk_end]
             chunk_parts.append(body_text)
@@ -439,18 +466,22 @@ class SyntaxChunker:
             chunk_start_byte = start + current_pos
             chunk_end_byte = start + chunk_end
 
-            chunks.append({
-                "text": chunk_text,
-                "start_byte": chunk_start_byte,
-                "end_byte": chunk_end_byte,
-                "is_continuation": len(chunks) > 0,
-                "has_signature_context": bool(signature) and len(chunks) > 0,
-            })
+            chunks.append(
+                {
+                    "text": chunk_text,
+                    "start_byte": chunk_start_byte,
+                    "end_byte": chunk_end_byte,
+                    "is_continuation": len(chunks) > 0,
+                    "has_signature_context": bool(signature) and len(chunks) > 0,
+                }
+            )
 
             # Move to next chunk
             old_pos = current_pos
             current_pos = chunk_end
-            logger.debug(f"  Moving position: {old_pos} -> {current_pos} (chunk_end={chunk_end})")
+            logger.debug(
+                f"  Moving position: {old_pos} -> {current_pos} (chunk_end={chunk_end})"
+            )
 
         logger.debug(f"_split_large_segment: Completed, created {len(chunks)} chunks")
         return chunks
@@ -468,7 +499,7 @@ class SyntaxChunker:
         Returns:
             Byte position where signature+docstring ends, or 0 if not found
         """
-        lines = text.split('\n')
+        lines = text.split("\n")
         if not lines:
             return 0
 
@@ -477,23 +508,31 @@ class SyntaxChunker:
         in_docstring = False
         docstring_delim = None
 
-        for i, line in enumerate(lines):
+        for line in lines:
             stripped = line.strip()
 
             if not signature_lines:
                 # Looking for start of definition
-                if stripped.startswith(('def ', 'class ', 'async def ', 'fn ', 'func ', 'function ')):
+                if stripped.startswith(
+                    ("def ", "class ", "async def ", "fn ", "func ", "function ")
+                ):
                     signature_lines.append(line)
                     # Check if definition ends on this line
-                    if stripped.endswith(':') or stripped.endswith('{') or stripped.endswith(')'):
+                    if (
+                        stripped.endswith(":")
+                        or stripped.endswith("{")
+                        or stripped.endswith(")")
+                    ):
                         continue
-                elif stripped.startswith(('public ', 'private ', 'protected ', 'static ')):
+                elif stripped.startswith(
+                    ("public ", "private ", "protected ", "static ")
+                ):
                     signature_lines.append(line)
                 else:
                     continue
             elif not in_docstring:
                 # Already have signature, look for docstring
-                if stripped.startswith(('"""', "'''", '/*', '//')):
+                if stripped.startswith(('"""', "'''", "/*", "//")):
                     in_docstring = True
                     if stripped.startswith('"""'):
                         docstring_delim = '"""'
@@ -504,7 +543,7 @@ class SyntaxChunker:
                     if stripped.count(docstring_delim) >= 2:
                         in_docstring = False
                         break
-                elif stripped and not stripped.startswith('#'):
+                elif stripped and not stripped.startswith("#"):
                     # Hit actual code, stop
                     break
                 else:
@@ -524,7 +563,7 @@ class SyntaxChunker:
             return 0
 
         # Calculate byte position
-        result = '\n'.join(signature_lines)
+        result = "\n".join(signature_lines)
         return len(result) + 1  # +1 for the newline
 
     def _build_chunk_data(
@@ -560,7 +599,9 @@ class SyntaxChunker:
             "end_byte": end,
         }
 
-    def _enrich_chunks_with_metadata(self, chunks: List[Dict[str, any]], root_node: Node, content: str) -> List[Dict[str, any]]:
+    def _enrich_chunks_with_metadata(
+        self, chunks: List[Dict[str, any]], root_node: Node, content: str
+    ) -> List[Dict[str, any]]:
         """
         Enrich chunks with AST metadata (function names, class names, symbol types).
 
@@ -608,7 +649,9 @@ class SyntaxChunker:
 
         return chunks
 
-    def _collect_definitions(self, node: Node, content: str, parent_class: Optional[str] = None) -> List[Dict[str, any]]:
+    def _collect_definitions(
+        self, node: Node, content: str, parent_class: Optional[str] = None
+    ) -> List[Dict[str, any]]:
         """
         Recursively collect all function and class definitions from the AST.
 
@@ -628,13 +671,15 @@ class SyntaxChunker:
                 else:
                     symbol_type = "definition"
 
-                definitions.append({
-                    "name": name,
-                    "symbol_type": symbol_type,
-                    "start_byte": node.start_byte,
-                    "end_byte": node.end_byte,
-                    "parent_class": parent_class,
-                })
+                definitions.append(
+                    {
+                        "name": name,
+                        "symbol_type": symbol_type,
+                        "start_byte": node.start_byte,
+                        "end_byte": node.end_byte,
+                        "parent_class": parent_class,
+                    }
+                )
 
                 # Update parent_class for nested definitions
                 if symbol_type == "class":
@@ -663,18 +708,18 @@ class SyntaxChunker:
         # Look for 'name' or 'identifier' child nodes
         for child in node.children:
             if child.type in ("identifier", "name", "property_identifier"):
-                return content[child.start_byte:child.end_byte]
+                return content[child.start_byte : child.end_byte]
             # Handle typed parameters pattern (TypeScript)
             if child.type == "type_identifier":
-                return content[child.start_byte:child.end_byte]
+                return content[child.start_byte : child.end_byte]
 
         # Fallback: look for first identifier in any child
         for child in node.children:
             if child.type == "identifier":
-                return content[child.start_byte:child.end_byte]
+                return content[child.start_byte : child.end_byte]
             # Recurse one level for compound patterns
             for grandchild in child.children:
                 if grandchild.type in ("identifier", "name"):
-                    return content[grandchild.start_byte:grandchild.end_byte]
+                    return content[grandchild.start_byte : grandchild.end_byte]
 
         return None

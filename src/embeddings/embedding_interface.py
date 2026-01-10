@@ -63,4 +63,4 @@ class EmbeddingInterface(ABC):
         Clear memory cache (e.g. CUDA memory) without unloading the model.
         Useful after memory-intensive operations like indexing.
         """
-        pass
+        return

@@ -1,11 +1,19 @@
 """Qdrant implementation of the database interface."""
 
-import os
 import json
-from typing import List, Dict, Any, Optional
+import os
+from typing import Any, Dict, List, Optional
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, PointIdsList, Filter, FieldCondition, MatchValue
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointIdsList,
+    PointStruct,
+    VectorParams,
+)
 
 from .database_interface import DatabaseInterface
 
@@ -13,7 +21,12 @@ from .database_interface import DatabaseInterface
 class QdrantDatabase(DatabaseInterface):
     """Qdrant implementation for vector storage."""
 
-    def __init__(self, persist_directory: str = ".code-rag", host: Optional[str] = None, port: Optional[int] = None):
+    def __init__(
+        self,
+        persist_directory: str = ".code-rag",
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+    ):
         """
         Initialize Qdrant client.
 
@@ -37,7 +50,10 @@ class QdrantDatabase(DatabaseInterface):
         self._model_name = None
 
     def initialize(
-        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+        self,
+        collection_name: str,
+        vector_size: int = 384,
+        model_name: Optional[str] = None,
     ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
@@ -77,18 +93,26 @@ class QdrantDatabase(DatabaseInterface):
 
             if current_size is not None and current_size != vector_size:
                 if stored_model:
-                    print(f"Dimension mismatch: Collection '{collection_name}' was created with model '{stored_model}' (dimension {current_size}).")
-                    print(f"Loading collection with the original model...")
+                    print(
+                        f"Dimension mismatch: Collection '{collection_name}' was created "
+                        f"with model '{stored_model}' (dimension {current_size})."
+                    )
+                    print("Loading collection with the original model...")
                     self._model_name = stored_model
                     self.vector_size = current_size
                     return stored_model
                 else:
                     # No model name stored, we can't recover gracefully
-                    print(f"Dimension mismatch: Collection '{collection_name}' has dimension {current_size}, requested {vector_size}.")
-                    print("No model name stored in collection. Use --reindex to recreate with the new model.")
+                    print(
+                        f"Dimension mismatch: Collection '{collection_name}' has dimension "
+                        f"{current_size}, requested {vector_size}."
+                    )
+                    print(
+                        "No model name stored in collection. Use --reindex to recreate with the new model."
+                    )
                     raise ValueError(
-                        f"Dimension mismatch and no model name stored. "
-                        f"Use --reindex to recreate the collection with the new model."
+                        "Dimension mismatch and no model name stored. "
+                        "Use --reindex to recreate the collection with the new model."
                     )
             else:
                 # Dimensions match, use stored model name if available
@@ -167,7 +191,9 @@ class QdrantDatabase(DatabaseInterface):
 
         # Prepare points for Qdrant
         points = []
-        for i, (doc_id, embedding, document) in enumerate(zip(ids, embeddings, documents)):
+        for i, (doc_id, embedding, document) in enumerate(
+            zip(ids, embeddings, documents)
+        ):
             payload = {"document": document}
             if metadatas and i < len(metadatas):
                 payload.update(metadatas[i])
@@ -186,9 +212,7 @@ class QdrantDatabase(DatabaseInterface):
             points=points,
         )
 
-    def query(
-        self, embedding: List[float], n_results: int = 5
-    ) -> Dict[str, Any]:
+    def query(self, embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """
         Query the database with an embedding vector.
 
@@ -274,7 +298,7 @@ class QdrantDatabase(DatabaseInterface):
             self.client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=ids),
-                wait=True
+                wait=True,
             )
         except Exception as e:
             print(f"Error deleting points: {e}")
@@ -296,7 +320,7 @@ class QdrantDatabase(DatabaseInterface):
                 collection_name=self.collection_name,
                 limit=10000,  # Adjust based on expected collection size
                 with_payload=False,
-                with_vectors=False
+                with_vectors=False,
             )
             return [str(point.id) for point in points]
         except Exception as e:
@@ -323,14 +347,13 @@ class QdrantDatabase(DatabaseInterface):
                 scroll_filter=Filter(
                     must=[
                         FieldCondition(
-                            key="file_path",
-                            match=MatchValue(value=file_path)
+                            key="file_path", match=MatchValue(value=file_path)
                         )
                     ]
                 ),
                 limit=10000,
                 with_payload=False,
-                with_vectors=False
+                with_vectors=False,
             )
             return [str(point.id) for point in points]
         except Exception as e:

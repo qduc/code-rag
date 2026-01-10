@@ -9,10 +9,7 @@ class RerankerInterface(ABC):
 
     @abstractmethod
     def rerank(
-        self,
-        query: str,
-        documents: List[str],
-        top_k: int = 5
+        self, query: str, documents: List[str], top_k: int = 5
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents based on relevance to the query.

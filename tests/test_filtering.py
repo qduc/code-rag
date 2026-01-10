@@ -55,8 +55,12 @@ def test_filtering():
         # Should NOT contain docs/readme.md
         # Note: paths are absolute, so we check for suffix
         assert any(p.endswith("src/main.py") for p in paths), "src/main.py missing"
-        assert any(p.endswith("tests/test_main.py") for p in paths), "tests/test_main.py missing"
-        assert not any(p.endswith("docs/readme.md") for p in paths), "docs/readme.md should not be present"
+        assert any(
+            p.endswith("tests/test_main.py") for p in paths
+        ), "tests/test_main.py missing"
+        assert not any(
+            p.endswith("docs/readme.md") for p in paths
+        ), "docs/readme.md should not be present"
         print("Test 1 PASSED")
 
         # Test 2: Search "main" with include_paths=["src/"]
@@ -68,7 +72,9 @@ def test_filtering():
         # Should contain src/main.py
         # Should NOT contain tests/test_main.py
         assert any(p.endswith("src/main.py") for p in paths), "src/main.py missing"
-        assert not any(p.endswith("tests/test_main.py") for p in paths), "tests/test_main.py should not be present"
+        assert not any(
+            p.endswith("tests/test_main.py") for p in paths
+        ), "tests/test_main.py should not be present"
         print("Test 2 PASSED")
 
         # Test 3: Search "main" with file_types=[".md"]
@@ -78,7 +84,9 @@ def test_filtering():
         print(f"Results: {paths}")
 
         # Should contain docs/readme.md
-        assert any(p.endswith("docs/readme.md") for p in paths), "docs/readme.md missing"
+        assert any(
+            p.endswith("docs/readme.md") for p in paths
+        ), "docs/readme.md missing"
         print("Test 3 PASSED")
 
         api.close()

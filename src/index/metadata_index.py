@@ -1,17 +1,18 @@
 """Metadata index manager for tracking file changes."""
 
-import json
 import hashlib
+import json
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Set
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
 
 @dataclass
 class FileMetadata:
     """Metadata for a single file in the codebase."""
+
     file_path: str
     mtime: float
     size: int
@@ -24,7 +25,7 @@ class FileMetadata:
         return asdict(self)
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'FileMetadata':
+    def from_dict(data: Dict[str, Any]) -> "FileMetadata":
         """Create from dictionary."""
         return FileMetadata(**data)
 
@@ -48,10 +49,10 @@ class MetadataIndex:
         """Load metadata from disk."""
         if self.index_path.exists():
             try:
-                with open(self.index_path, 'r') as f:
+                with open(self.index_path, "r") as f:
                     data = json.load(f)
-                    self.last_reindex_time = data.get('last_reindex_time', 0.0)
-                    files = data.get('files', {})
+                    self.last_reindex_time = data.get("last_reindex_time", 0.0)
+                    files = data.get("files", {})
                     self.metadata = {
                         path: FileMetadata.from_dict(meta)
                         for path, meta in files.items()
@@ -66,12 +67,12 @@ class MetadataIndex:
         """Save metadata to disk."""
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            'last_reindex_time': self.last_reindex_time,
-            'files': {path: meta.to_dict() for path, meta in self.metadata.items()}
+            "last_reindex_time": self.last_reindex_time,
+            "files": {path: meta.to_dict() for path, meta in self.metadata.items()},
         }
         # Atomic write using temporary file
-        temp_path = self.index_path.with_suffix('.tmp')
-        with open(temp_path, 'w') as f:
+        temp_path = self.index_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
             json.dump(data, f, indent=2)
         temp_path.replace(self.index_path)
 
@@ -125,8 +126,8 @@ class MetadataIndex:
         """
         try:
             hasher = hashlib.sha256()
-            with open(file_path, 'rb') as f:
-                for chunk in iter(lambda: f.read(8192), b''):
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
                     hasher.update(chunk)
             return hasher.hexdigest()
         except Exception as e:
@@ -134,9 +135,7 @@ class MetadataIndex:
             return None
 
     def detect_changes(
-        self,
-        current_files: List[str],
-        verify_with_hash: bool = True
+        self, current_files: List[str], verify_with_hash: bool = True
     ) -> Dict[str, List[str]]:
         """
         Detect which files have changed, been added, or deleted.
@@ -152,19 +151,14 @@ class MetadataIndex:
                 - 'deleted': Files in index but not on disk
                 - 'unchanged': Files with no changes
         """
-        result = {
-            'added': [],
-            'modified': [],
-            'deleted': [],
-            'unchanged': []
-        }
+        result = {"added": [], "modified": [], "deleted": [], "unchanged": []}
 
         current_files_set = set(current_files)
         tracked_files = self.get_all_tracked_files()
 
         # Detect deleted files
         deleted = tracked_files - current_files_set
-        result['deleted'] = list(deleted)
+        result["deleted"] = list(deleted)
 
         # Check each current file
         for file_path in current_files:
@@ -177,31 +171,30 @@ class MetadataIndex:
 
                 if metadata is None:
                     # New file
-                    result['added'].append(file_path)
+                    result["added"].append(file_path)
                 else:
                     # Check if mtime or size changed
-                    if (metadata.mtime != current_mtime or
-                        metadata.size != current_size):
+                    if metadata.mtime != current_mtime or metadata.size != current_size:
 
                         # Verify actual content change with hash if requested
                         if verify_with_hash:
                             current_hash = self.compute_file_hash(file_path)
                             if current_hash and current_hash != metadata.content_hash:
-                                result['modified'].append(file_path)
+                                result["modified"].append(file_path)
                             else:
                                 # Hash matches - just mtime/size false positive
-                                result['unchanged'].append(file_path)
+                                result["unchanged"].append(file_path)
                         else:
                             # Trust mtime/size without verification
-                            result['modified'].append(file_path)
+                            result["modified"].append(file_path)
                     else:
                         # No changes
-                        result['unchanged'].append(file_path)
+                        result["unchanged"].append(file_path)
 
             except OSError as e:
                 # File disappeared or permission error
                 print(f"Error checking {file_path}: {e}")
-                result['deleted'].append(file_path)
+                result["deleted"].append(file_path)
 
         return result
 

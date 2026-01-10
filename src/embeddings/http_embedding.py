@@ -19,7 +19,6 @@ import requests
 
 from .embedding_interface import EmbeddingInterface
 
-
 # Server configuration
 DEFAULT_PORT = 8199
 STARTUP_TIMEOUT = 60  # Max time to wait for server to start (includes model loading)
@@ -30,6 +29,7 @@ CONNECTION_TIMEOUT = 5  # HTTP request timeout
 def get_server_info_path() -> Path:
     """Get the path to the server info file."""
     from ..config.config import Config
+
     config = Config()
     cache_dir = Path(config.get_database_path())
     return cache_dir / "embedding_server.json"
@@ -38,6 +38,7 @@ def get_server_info_path() -> Path:
 def get_server_log_path() -> Path:
     """Get the path to the server log file."""
     from ..config.config import Config
+
     config = Config()
     cache_dir = Path(config.get_database_path())
     return cache_dir / "embedding_server.log"
@@ -75,8 +76,7 @@ class HttpEmbedding(EmbeddingInterface):
         """Check if the embedding server is running and healthy."""
         try:
             response = requests.get(
-                f"{self.base_url}/health",
-                timeout=CONNECTION_TIMEOUT
+                f"{self.base_url}/health", timeout=CONNECTION_TIMEOUT
             )
             return response.status_code == 200
         except (requests.ConnectionError, requests.Timeout):
@@ -114,10 +114,18 @@ class HttpEmbedding(EmbeddingInterface):
 
         try:
             # Create a detached subprocess that survives parent exit
-            if os.name == 'nt':  # Windows
-                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            if os.name == "nt":  # Windows
+                creationflags = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                )
                 self._server_process = subprocess.Popen(
-                    [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
+                    [
+                        python_exe,
+                        "-m",
+                        "src.embedding_server",
+                        "--port",
+                        str(self.port),
+                    ],
                     creationflags=creationflags,
                     stdout=subprocess.DEVNULL,
                     stderr=log_file,
@@ -126,7 +134,13 @@ class HttpEmbedding(EmbeddingInterface):
             else:  # Unix
                 # Use nohup-style detachment
                 self._server_process = subprocess.Popen(
-                    [python_exe, "-m", "src.embedding_server", "--port", str(self.port)],
+                    [
+                        python_exe,
+                        "-m",
+                        "src.embedding_server",
+                        "--port",
+                        str(self.port),
+                    ],
                     stdout=subprocess.DEVNULL,
                     stderr=log_file,
                     stdin=subprocess.DEVNULL,
@@ -137,7 +151,10 @@ class HttpEmbedding(EmbeddingInterface):
             if log_file != subprocess.DEVNULL:
                 log_file.close()
 
-        print(f"Spawned embedding server (PID {self._server_process.pid}) logging to {log_path}", file=sys.stderr)
+        print(
+            f"Spawned embedding server (PID {self._server_process.pid}) logging to {log_path}",
+            file=sys.stderr,
+        )
 
     def _ensure_server(self):
         """Ensure the embedding server is running, spawning if needed.
@@ -196,24 +213,27 @@ class HttpEmbedding(EmbeddingInterface):
                 if log_path.exists():
                     # Read last 1KB
                     size = log_path.stat().st_size
-                    with open(log_path, 'r') as f:
+                    with open(log_path, "r") as f:
                         if size > 1024:
                             f.seek(size - 1024)
                         stderr_output = f.read()
             except Exception:
                 pass
 
-            raise RuntimeError(f"Embedding server failed to start. Exit code: {self._server_process.returncode}\nLog tail: {stderr_output}")
+            raise RuntimeError(
+                f"Embedding server failed to start. Exit code: {self._server_process.returncode}\n"
+                f"Log tail: {stderr_output}"
+            )
 
-        raise RuntimeError(f"Embedding server failed to start within {STARTUP_TIMEOUT}s")
+        raise RuntimeError(
+            f"Embedding server failed to start within {STARTUP_TIMEOUT}s"
+        )
 
     def _start_heartbeat(self):
         """Start the heartbeat thread."""
         self._heartbeat_stop.clear()
         self._heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop,
-            daemon=True,
-            name="embedding-heartbeat"
+            target=self._heartbeat_loop, daemon=True, name="embedding-heartbeat"
         )
         self._heartbeat_thread.start()
 
@@ -224,7 +244,7 @@ class HttpEmbedding(EmbeddingInterface):
                 requests.post(
                     f"{self.base_url}/heartbeat",
                     json={"client_id": self.client_id},
-                    timeout=CONNECTION_TIMEOUT
+                    timeout=CONNECTION_TIMEOUT,
                 )
             except (requests.ConnectionError, requests.Timeout):
                 # Server might have died, try to restart on next operation
@@ -244,7 +264,7 @@ class HttpEmbedding(EmbeddingInterface):
             requests.post(
                 f"{self.base_url}/disconnect",
                 json={"client_id": self.client_id},
-                timeout=2
+                timeout=2,
             )
         except (requests.ConnectionError, requests.Timeout):
             pass
@@ -257,7 +277,7 @@ class HttpEmbedding(EmbeddingInterface):
             response = requests.post(
                 f"{self.base_url}/{endpoint}",
                 json=data,
-                timeout=120  # Long timeout for embedding operations
+                timeout=120,  # Long timeout for embedding operations
             )
             response.raise_for_status()
             return response.json()
@@ -307,7 +327,7 @@ class HttpEmbedding(EmbeddingInterface):
             requests.post(
                 f"{self.base_url}/clear_cache",
                 json={"client_id": self.client_id},
-                timeout=CONNECTION_TIMEOUT
+                timeout=CONNECTION_TIMEOUT,
             )
         except (requests.ConnectionError, requests.Timeout):
             pass

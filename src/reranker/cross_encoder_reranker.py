@@ -1,10 +1,12 @@
 """Cross-encoder implementation for semantic reranking."""
 
-from typing import List, Tuple, Optional
+import gc
 import threading
 import time
-import gc
+from typing import List, Optional, Tuple
+
 from sentence_transformers import CrossEncoder
+
 from .reranker_interface import RerankerInterface
 
 
@@ -15,7 +17,7 @@ class CrossEncoderReranker(RerankerInterface):
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         lazy_load: bool = True,
-        idle_timeout: int = 1800
+        idle_timeout: int = 1800,
     ):
         """
         Initialize the cross-encoder model.
@@ -52,7 +54,9 @@ class CrossEncoderReranker(RerankerInterface):
     def start_background_loading(self):
         """Start loading the model in a background thread."""
         if self._loading_thread is None:
-            self._loading_thread = threading.Thread(target=self._load_model, daemon=True)
+            self._loading_thread = threading.Thread(
+                target=self._load_model, daemon=True
+            )
             self._loading_thread.start()
 
     def _start_cleanup_thread(self):
@@ -62,7 +66,7 @@ class CrossEncoderReranker(RerankerInterface):
             self._cleanup_thread = threading.Thread(
                 target=self._cleanup_loop,
                 daemon=True,
-                name=f"reranker-cleanup-{self.model_name}"
+                name=f"reranker-cleanup-{self.model_name}",
             )
             self._cleanup_thread.start()
 
@@ -87,6 +91,7 @@ class CrossEncoderReranker(RerankerInterface):
                         gc.collect()
                         try:
                             import torch
+
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                         except ImportError:
@@ -106,10 +111,7 @@ class CrossEncoderReranker(RerankerInterface):
         self._last_used = time.time()
 
     def rerank(
-        self,
-        query: str,
-        documents: List[str],
-        top_k: int = 5
+        self, query: str, documents: List[str], top_k: int = 5
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents using cross-encoder scoring.
@@ -138,7 +140,7 @@ class CrossEncoderReranker(RerankerInterface):
         scored_indices.sort(key=lambda x: x[1], reverse=True)
 
         # Return top_k results
-        return scored_indices[:min(top_k, len(scored_indices))]
+        return scored_indices[: min(top_k, len(scored_indices))]
 
     def unload_model(self):
         """Explicitly unload the model from memory."""
@@ -149,6 +151,7 @@ class CrossEncoderReranker(RerankerInterface):
                 gc.collect()
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 except ImportError:

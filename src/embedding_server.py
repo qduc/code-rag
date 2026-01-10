@@ -15,11 +15,11 @@ import json
 import os
 import signal
 import sys
-import time
 import threading
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Dict, List
 
 # Lazy imports to keep startup fast
 uvicorn = None
@@ -34,6 +34,7 @@ def _ensure_imports():
         import uvicorn as _uvicorn
         from fastapi import FastAPI as _FastAPI
         from pydantic import BaseModel as _BaseModel
+
         uvicorn = _uvicorn
         FastAPI = _FastAPI
         BaseModel = _BaseModel
@@ -49,6 +50,7 @@ CHECK_INTERVAL = 30  # How often to check for idle state
 def get_lock_file_path() -> Path:
     """Get the path to the server lock file."""
     from .config.config import Config
+
     config = Config()
     cache_dir = Path(config.get_database_path())
     return cache_dir / "embedding_server.lock"
@@ -57,6 +59,7 @@ def get_lock_file_path() -> Path:
 def get_server_info_path() -> Path:
     """Get the path to the server info file (contains port, pid)."""
     from .config.config import Config
+
     config = Config()
     cache_dir = Path(config.get_database_path())
     return cache_dir / "embedding_server.json"
@@ -82,12 +85,14 @@ def find_free_port(start_port: int, max_attempts: int = 100) -> int:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(('127.0.0.1', port))
+                s.bind(("127.0.0.1", port))
                 return port
         except OSError:
             continue
 
-    raise RuntimeError(f"Could not find a free port in range {start_port}-{start_port + max_attempts}")
+    raise RuntimeError(
+        f"Could not find a free port in range {start_port}-{start_port + max_attempts}"
+    )
 
 
 class EmbeddingServer:
@@ -109,6 +114,7 @@ class EmbeddingServer:
 
         # Config
         from .config.config import Config
+
         self.config = Config()
 
     def _load_models(self):
@@ -120,32 +126,41 @@ class EmbeddingServer:
             if self._models_loaded:
                 return
 
-            print(f"Loading embedding model: {self.config.get_embedding_model()}", file=sys.stderr)
+            print(
+                f"Loading embedding model: {self.config.get_embedding_model()}",
+                file=sys.stderr,
+            )
 
             # Load embedding model
             model_name = self.config.get_embedding_model()
             if model_name.startswith("text-embedding-"):
                 from .embeddings.openai_embedding import OpenAIEmbedding
+
                 self._embedding_model = OpenAIEmbedding(model_name)
             else:
-                from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
+                from .embeddings.sentence_transformer_embedding import (
+                    SentenceTransformerEmbedding,
+                )
+
                 # Use configured idle timeout (default 30 min) to release VRAM
                 idle_timeout = self.config.get_model_idle_timeout()
                 self._embedding_model = SentenceTransformerEmbedding(
-                    model_name,
-                    lazy_load=False,
-                    idle_timeout=idle_timeout
+                    model_name, lazy_load=False, idle_timeout=idle_timeout
                 )
 
             # Load reranker if enabled
             if self.config.is_reranker_enabled():
-                print(f"Loading reranker model: {self.config.get_reranker_model()}", file=sys.stderr)
+                print(
+                    f"Loading reranker model: {self.config.get_reranker_model()}",
+                    file=sys.stderr,
+                )
                 from .reranker.cross_encoder_reranker import CrossEncoderReranker
+
                 idle_timeout = self.config.get_model_idle_timeout()
                 self._reranker = CrossEncoderReranker(
                     self.config.get_reranker_model(),
                     lazy_load=False,
-                    idle_timeout=idle_timeout
+                    idle_timeout=idle_timeout,
                 )
 
             self._models_loaded = True
@@ -219,9 +234,7 @@ class EmbeddingServer:
 
             loop = asyncio.get_event_loop()
             embeddings = await loop.run_in_executor(
-                None,
-                self._embedding_model.embed_batch,
-                request.texts
+                None, self._embedding_model.embed_batch, request.texts
             )
             return {"embeddings": embeddings}
 
@@ -233,9 +246,7 @@ class EmbeddingServer:
 
             loop = asyncio.get_event_loop()
             embedding = await loop.run_in_executor(
-                None,
-                self._embedding_model.embed_query,
-                request.query
+                None, self._embedding_model.embed_query, request.query
             )
             return {"embedding": embedding}
 
@@ -277,7 +288,9 @@ class EmbeddingServer:
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(
                 None,
-                lambda: self._reranker.rerank(request.query, request.documents, request.top_k)
+                lambda: self._reranker.rerank(
+                    request.query, request.documents, request.top_k
+                ),
             )
             return {"results": results}
 
@@ -287,7 +300,11 @@ class EmbeddingServer:
             return {
                 "embedding_model": self.config.get_embedding_model(),
                 "reranker_enabled": self.config.is_reranker_enabled(),
-                "reranker_model": self.config.get_reranker_model() if self.config.is_reranker_enabled() else None,
+                "reranker_model": (
+                    self.config.get_reranker_model()
+                    if self.config.is_reranker_enabled()
+                    else None
+                ),
             }
 
         return app
@@ -307,7 +324,8 @@ class EmbeddingServer:
             # Remove stale clients
             with self.clients_lock:
                 stale_clients = [
-                    cid for cid, last_seen in self.clients.items()
+                    cid
+                    for cid, last_seen in self.clients.items()
                     if now - last_seen > HEARTBEAT_TIMEOUT
                 ]
                 for cid in stale_clients:
@@ -318,13 +336,18 @@ class EmbeddingServer:
 
             # If no active clients, start shutdown countdown
             if active_clients == 0:
-                print(f"No active clients, waiting {IDLE_SHUTDOWN_DELAY}s before shutdown...", file=sys.stderr)
+                print(
+                    f"No active clients, waiting {IDLE_SHUTDOWN_DELAY}s before shutdown...",
+                    file=sys.stderr,
+                )
                 await asyncio.sleep(IDLE_SHUTDOWN_DELAY)
 
                 # Check again after delay
                 with self.clients_lock:
                     if len(self.clients) == 0:
-                        print("No clients reconnected, shutting down...", file=sys.stderr)
+                        print(
+                            "No clients reconnected, shutting down...", file=sys.stderr
+                        )
                         self._cleanup()
                         os._exit(0)
 
@@ -363,18 +386,21 @@ class EmbeddingServer:
         try:
             actual_port = find_free_port(self.port)
             if actual_port != self.port:
-                print(f"Port {self.port} is in use, using port {actual_port}", file=sys.stderr)
+                print(
+                    f"Port {self.port} is in use, using port {actual_port}",
+                    file=sys.stderr,
+                )
             self.port = actual_port
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
         # Write our PID to lock file
-        with open(lock_path, 'w') as f:
+        with open(lock_path, "w") as f:
             f.write(str(os.getpid()))
 
         # Write server info with the actual port being used
-        with open(info_path, 'w') as f:
+        with open(info_path, "w") as f:
             json.dump({"port": self.port, "pid": os.getpid()}, f)
 
         # Handle signals for cleanup
@@ -397,8 +423,11 @@ class EmbeddingServer:
 def main():
     """Entry point for the embedding server."""
     import argparse
+
     parser = argparse.ArgumentParser(description="Code-RAG Embedding Server")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on")
+    parser.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help="Port to listen on"
+    )
     args = parser.parse_args()
 
     server = EmbeddingServer(port=args.port)

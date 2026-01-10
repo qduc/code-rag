@@ -64,7 +64,7 @@ Claude: [Automatically searches and finds the code]
         "I found the database connection logic in src/db/connection.py..."
 ```
 
-See [MCP_SETUP.md](MCP_SETUP.md) for detailed setup.
+See [docs/mcp.md](docs/mcp.md) for detailed setup.
 
 ## Basic Usage
 
@@ -107,7 +107,7 @@ export CODE_RAG_CHUNK_SIZE="2048"
 export CODE_RAG_ADDITIONAL_IGNORE_PATTERNS="*.tmp,*.bak,logs/"
 ```
 
-Full configuration options in [IMPLEMENTATION.md](IMPLEMENTATION.md#configuration-system).
+Full configuration options in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md#configuration-system).
 
 ## How It Works
 
@@ -141,8 +141,8 @@ for r in results:
 ## Documentation
 
 - **[AGENTS.md](AGENTS.md)** - Developer onboarding and architecture overview
-- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Detailed implementation reference
-- **[MCP_SETUP.md](MCP_SETUP.md)** - MCP server setup guide
+- **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** - Detailed implementation reference
+- **[docs/mcp.md](docs/mcp.md)** - MCP server setup guide
 
 ## Supported Languages
 
@@ -164,6 +164,29 @@ Other languages use line-aware chunking (still works, just less context-aware).
 
 **Memory issues?** `export CODE_RAG_BATCH_SIZE="16"`
 
+## Development
+
+### Setup
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+```
+
+### Testing & Linting
+
+```bash
+# Run tests
+pytest
+
+# Format code
+black .
+isort .
+
+# Linting
+flake8
+```
+
 ## Contributing
 
 1. Fork the repo
@@ -172,7 +195,7 @@ Other languages use line-aware chunking (still works, just less context-aware).
 4. Add tests
 5. Submit PR
 
-See [AGENTS.md](AGENTS.md) for architecture and [IMPLEMENTATION.md](IMPLEMENTATION.md) for internals.
+See [AGENTS.md](AGENTS.md) for architecture and [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) for internals.
 
 ## License
 

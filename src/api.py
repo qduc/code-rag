@@ -6,20 +6,21 @@ that can be used by MCP servers, CLI tools, or other integrations.
 
 import hashlib
 import os
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Set, Callable
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set
+
 from .config.config import Config
 from .database.chroma_database import ChromaDatabase
-from .database.qdrant_database import QdrantDatabase
 from .database.database_interface import DatabaseInterface
+from .database.qdrant_database import QdrantDatabase
 from .embeddings.embedding_interface import EmbeddingInterface
 from .embeddings.openai_embedding import OpenAIEmbedding
 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
+from .index.metadata_index import FileMetadata, MetadataIndex
 from .processor.file_processor import FileProcessor
-from .reranker.reranker_interface import RerankerInterface
 from .reranker.cross_encoder_reranker import CrossEncoderReranker
-from .index.metadata_index import MetadataIndex, FileMetadata
+from .reranker.reranker_interface import RerankerInterface
 
 
 def generate_collection_name(codebase_path: str) -> str:
@@ -125,7 +126,9 @@ class CodeRAGAPI:
         self._http_client_id: Optional[str] = None  # Shared client ID for HTTP mode
 
         # Initialize embedding model
-        self.embedding_model = self._create_embedding_model(embedding_model, lazy_load=lazy_load_models)
+        self.embedding_model = self._create_embedding_model(
+            embedding_model, lazy_load=lazy_load_models
+        )
 
         # Initialize database
         self.database = self._create_database(database_type, self.database_path)
@@ -137,17 +140,22 @@ class CodeRAGAPI:
                 if self._use_shared_server:
                     # Use HTTP reranker (shares model with embedding server)
                     from .reranker.http_reranker import HttpReranker
+
                     # Share client ID with embedding model for unified heartbeat
-                    if hasattr(self.embedding_model, 'client_id'):
+                    if hasattr(self.embedding_model, "client_id"):
                         self._http_client_id = self.embedding_model.client_id
                     self.reranker = HttpReranker(
                         port=self._shared_server_port,
-                        client_id=self._http_client_id or ""
+                        client_id=self._http_client_id or "",
                     )
                 else:
                     model_name = reranker_model or self.config.get_reranker_model()
                     idle_timeout = self.config.get_model_idle_timeout()
-                    self.reranker = CrossEncoderReranker(model_name, lazy_load=lazy_load_models, idle_timeout=idle_timeout)
+                    self.reranker = CrossEncoderReranker(
+                        model_name,
+                        lazy_load=lazy_load_models,
+                        idle_timeout=idle_timeout,
+                    )
             except Exception as e:
                 print(f"Warning: Failed to load reranker ({e}), disabling reranking")
                 self.reranker = None
@@ -155,18 +163,21 @@ class CodeRAGAPI:
     def start_background_loading(self):
         """Start loading models in background threads for faster startup."""
         # Start embedding model loading in background
-        if hasattr(self.embedding_model, 'start_background_loading'):
+        if hasattr(self.embedding_model, "start_background_loading"):
             self.embedding_model.start_background_loading()
 
         # Start reranker model loading in background
-        if self.reranker and hasattr(self.reranker, 'start_background_loading'):
+        if self.reranker and hasattr(self.reranker, "start_background_loading"):
             self.reranker.start_background_loading()
 
-    def _create_embedding_model(self, model_name: str, lazy_load: bool = False) -> EmbeddingInterface:
+    def _create_embedding_model(
+        self, model_name: str, lazy_load: bool = False
+    ) -> EmbeddingInterface:
         """Create an embedding model instance based on the model name and config."""
         # Use HTTP client if shared server mode is enabled
         if self._use_shared_server:
             from .embeddings.http_embedding import HttpEmbedding
+
             return HttpEmbedding(port=self._shared_server_port)
 
         # Otherwise, load models locally
@@ -174,7 +185,9 @@ class CodeRAGAPI:
         if model_name.startswith("text-embedding-"):
             return OpenAIEmbedding(model_name, idle_timeout=idle_timeout)
         else:
-            return SentenceTransformerEmbedding(model_name, lazy_load=lazy_load, idle_timeout=idle_timeout)
+            return SentenceTransformerEmbedding(
+                model_name, lazy_load=lazy_load, idle_timeout=idle_timeout
+            )
 
     def _create_database(
         self, database_type: str, database_path: str
@@ -189,7 +202,9 @@ class CodeRAGAPI:
 
     def _get_metadata_index_path(self, collection_name: str) -> str:
         """Get the path to the metadata index file for a collection."""
-        return os.path.join(self.database_path, f"{collection_name}_index_metadata.json")
+        return os.path.join(
+            self.database_path, f"{collection_name}_index_metadata.json"
+        )
 
     def _get_metadata_index(self, collection_name: str) -> MetadataIndex:
         """Get or create metadata index for a collection."""
@@ -216,12 +231,16 @@ class CodeRAGAPI:
 
         vector_size = self.embedding_model.get_embedding_dimension()
         stored_model = self.database.initialize(
-            collection_name, vector_size=vector_size, model_name=self.embedding_model_name
+            collection_name,
+            vector_size=vector_size,
+            model_name=self.embedding_model_name,
         )
 
         # If dimension mismatch, reload with the stored model
         if stored_model and stored_model != self.embedding_model_name:
-            self.embedding_model = self._create_embedding_model(stored_model, lazy_load=self.lazy_load_models)
+            self.embedding_model = self._create_embedding_model(
+                stored_model, lazy_load=self.lazy_load_models
+            )
             self.embedding_model_name = stored_model
             return stored_model
 
@@ -320,15 +339,19 @@ class CodeRAGAPI:
             for file_path in files:
                 file_stats = processor.get_file_stats(file_path)
                 if file_stats:
-                    file_hash = processor.compute_file_hash(file_path) if verify_with_hash else None
+                    file_hash = (
+                        processor.compute_file_hash(file_path)
+                        if verify_with_hash
+                        else None
+                    )
 
                     file_metadata = FileMetadata(
                         file_path=file_path,
-                        mtime=file_stats['mtime'],
-                        size=file_stats['size'],
+                        mtime=file_stats["mtime"],
+                        size=file_stats["size"],
                         chunk_count=file_chunk_counts.get(file_path, 0),
                         content_hash=file_hash,
-                        last_indexed=datetime.now().timestamp()
+                        last_indexed=datetime.now().timestamp(),
                     )
                     metadata_index.update_file_metadata(file_path, file_metadata)
 
@@ -377,14 +400,18 @@ class CodeRAGAPI:
 
         # Detect changes
         verify_with_hash = self.config.should_verify_changes_with_hash()
-        changes = metadata_index.detect_changes(current_files, verify_with_hash=verify_with_hash)
+        changes = metadata_index.detect_changes(
+            current_files, verify_with_hash=verify_with_hash
+        )
 
-        added = changes['added']
-        modified = changes['modified']
-        deleted = changes['deleted']
+        added = changes["added"]
+        modified = changes["modified"]
+        deleted = changes["deleted"]
         files_to_process = added + modified
 
-        print(f"Incremental reindex: {len(added)} added, {len(modified)} modified, {len(deleted)} deleted")
+        print(
+            f"Incremental reindex: {len(added)} added, {len(modified)} modified, {len(deleted)} deleted"
+        )
 
         # Delete chunks for deleted files
         for file_path in deleted:
@@ -418,14 +445,16 @@ class CodeRAGAPI:
             # Update metadata index
             file_stats = processor.get_file_stats(file_path)
             if file_stats:
-                file_hash = processor.compute_file_hash(file_path) if verify_with_hash else None
+                file_hash = (
+                    processor.compute_file_hash(file_path) if verify_with_hash else None
+                )
                 file_metadata = FileMetadata(
                     file_path=file_path,
-                    mtime=file_stats['mtime'],
-                    size=file_stats['size'],
+                    mtime=file_stats["mtime"],
+                    size=file_stats["size"],
                     chunk_count=len(chunks),
                     content_hash=file_hash,
-                    last_indexed=datetime.now().timestamp()
+                    last_indexed=datetime.now().timestamp(),
                 )
                 metadata_index.update_file_metadata(file_path, file_metadata)
 
@@ -466,11 +495,11 @@ class CodeRAGAPI:
         self.embedding_model.clear_cache()
 
         return {
-            'added_count': len(added),
-            'modified_count': len(modified),
-            'deleted_count': len(deleted),
-            'unchanged_count': len(changes['unchanged']),
-            'total_chunks': total_chunks
+            "added_count": len(added),
+            "modified_count": len(modified),
+            "deleted_count": len(deleted),
+            "unchanged_count": len(changes["unchanged"]),
+            "total_chunks": total_chunks,
         }
 
     def search(
@@ -509,7 +538,9 @@ class CodeRAGAPI:
         # Use active collection if none specified
         if collection_name is None:
             if self._active_collection is None:
-                raise ValueError("No collection specified and no active collection set. Call ensure_indexed() first.")
+                raise ValueError(
+                    "No collection specified and no active collection set. Call ensure_indexed() first."
+                )
             collection_name = self._active_collection
 
         # Generate embedding for query using embed_query to support models with query-specific prefixes
@@ -545,7 +576,9 @@ class CodeRAGAPI:
 
                 # Filter by file types
                 if file_types:
-                    if not any(file_path.lower().endswith(ext.lower()) for ext in file_types):
+                    if not any(
+                        file_path.lower().endswith(ext.lower()) for ext in file_types
+                    ):
                         continue
 
                 # Filter by include paths
@@ -570,7 +603,9 @@ class CodeRAGAPI:
                 documents = results["documents"][0]
 
                 # Rerank documents
-                reranked_indices = self.reranker.rerank(query, documents, top_k=n_results)
+                reranked_indices = self.reranker.rerank(
+                    query, documents, top_k=n_results
+                )
 
                 # Reorder results based on reranking
                 reranked_docs = []
@@ -587,7 +622,7 @@ class CodeRAGAPI:
                 results["metadatas"][0] = reranked_metadata
                 results["distances"][0] = reranked_scores
 
-            except Exception as e:
+            except Exception:
                 # Fall back to original results if reranking fails
                 pass
 
@@ -667,8 +702,12 @@ class CodeRAGAPI:
                 last_chunk = chunks_metadata.get(sorted_indices[-1], {})
 
                 result["expanded_content"] = expanded_content
-                result["expanded_start_line"] = first_chunk.get("start_line", result["start_line"])
-                result["expanded_end_line"] = last_chunk.get("end_line", result["end_line"])
+                result["expanded_start_line"] = first_chunk.get(
+                    "start_line", result["start_line"]
+                )
+                result["expanded_end_line"] = last_chunk.get(
+                    "end_line", result["end_line"]
+                )
             else:
                 # No expansion possible
                 result["expanded_content"] = result["content"]
@@ -696,7 +735,9 @@ class CodeRAGAPI:
         # Use active collection if none specified
         if collection_name is None:
             if self._active_collection is None:
-                raise ValueError("No collection specified and no active collection set. Call ensure_indexed() first.")
+                raise ValueError(
+                    "No collection specified and no active collection set. Call ensure_indexed() first."
+                )
             collection_name = self._active_collection
 
         # Query using file path and chunk index in metadata
@@ -733,7 +774,7 @@ class CodeRAGAPI:
         """
         try:
             return self.database.is_processed()
-        except:
+        except Exception:
             return False
 
     def count(self) -> int:
@@ -745,7 +786,7 @@ class CodeRAGAPI:
         """
         try:
             return self.database.count()
-        except:
+        except Exception:
             return 0
 
     def ensure_indexed(
@@ -788,7 +829,10 @@ class CodeRAGAPI:
         if not path.exists():
             return {"success": False, "error": f"Path does not exist: {codebase_path}"}
         if not path.is_dir():
-            return {"success": False, "error": f"Path is not a directory: {codebase_path}"}
+            return {
+                "success": False,
+                "error": f"Path is not a directory: {codebase_path}",
+            }
 
         path_str = str(path)
 
@@ -798,17 +842,25 @@ class CodeRAGAPI:
 
         # Check session cache first (fast path)
         if not force_reindex and path_str in self._indexed_paths:
-            return {"success": True, "already_indexed": True, "total_chunks": self.count()}
+            return {
+                "success": True,
+                "already_indexed": True,
+                "total_chunks": self.count(),
+            }
 
         # Try to find existing data in the new collection first
         # Initialize collection first (needed to check if data exists)
         # This loads existing data from disk if available
-        stored_model = self.initialize_collection(collection_name, force_reindex=force_reindex)
+        stored_model = self.initialize_collection(
+            collection_name, force_reindex=force_reindex
+        )
         reloaded_model = None
 
         if stored_model and stored_model != self.embedding_model_name:
             # Dimension mismatch - reload with stored model
-            self.embedding_model = self._create_embedding_model(stored_model, lazy_load=self.lazy_load_models)
+            self.embedding_model = self._create_embedding_model(
+                stored_model, lazy_load=self.lazy_load_models
+            )
             self.embedding_model_name = stored_model
             reloaded_model = stored_model
 
@@ -823,11 +875,13 @@ class CodeRAGAPI:
 
             if metadata_index.should_reindex(debounce_minutes):
                 # Perform incremental reindex
-                print(f"Auto-reindex triggered ({debounce_minutes} min debounce elapsed)")
+                print(
+                    f"Auto-reindex triggered ({debounce_minutes} min debounce elapsed)"
+                )
                 result = self.incremental_reindex(
                     path_str,
                     collection_name=collection_name,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
 
                 # Mark as indexed and return
@@ -837,7 +891,7 @@ class CodeRAGAPI:
                     "already_indexed": True,
                     "total_chunks": self.count(),
                     "reloaded_model": reloaded_model,
-                    "incremental_reindex": result
+                    "incremental_reindex": result,
                 }
             else:
                 # Debounce active - skip reindex
@@ -847,7 +901,7 @@ class CodeRAGAPI:
                     "already_indexed": True,
                     "total_chunks": self.count(),
                     "reloaded_model": reloaded_model,
-                    "debounce_active": True
+                    "debounce_active": True,
                 }
 
         # Need to index - perform validation if requested

@@ -1,7 +1,7 @@
 """Abstract base class for vector database."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 class DatabaseInterface(ABC):
@@ -9,7 +9,10 @@ class DatabaseInterface(ABC):
 
     @abstractmethod
     def initialize(
-        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+        self,
+        collection_name: str,
+        vector_size: int = 384,
+        model_name: Optional[str] = None,
     ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
@@ -56,9 +59,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    def query(
-        self, embedding: List[float], n_results: int = 5
-    ) -> Dict[str, Any]:
+    def query(self, embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """
         Query the database with an embedding vector.
 

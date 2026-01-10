@@ -2,11 +2,12 @@
 
 import os
 from pathlib import Path
-from typing import Optional
+
 from dotenv import load_dotenv
 
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(env_path)
+
 
 class Config:
     """Configuration handler for the code-rag application."""
@@ -28,28 +29,44 @@ class Config:
         self.batch_size = max(1, self._get_int_env("CODE_RAG_BATCH_SIZE", 32))
 
         # Chunking configuration
-        self.include_file_header = os.getenv("CODE_RAG_INCLUDE_FILE_HEADER", "true").lower() in ("true", "1", "yes")
-        self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in ("true", "1", "yes")
+        self.include_file_header = os.getenv(
+            "CODE_RAG_INCLUDE_FILE_HEADER", "true"
+        ).lower() in ("true", "1", "yes")
+        self.exclude_tests = os.getenv("CODE_RAG_EXCLUDE_TESTS", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         # Additional ignore patterns (comma-separated)
         additional_ignore_str = os.getenv("CODE_RAG_ADDITIONAL_IGNORE_PATTERNS", "")
         self.additional_ignore_patterns = [
-            pattern.strip() for pattern in additional_ignore_str.split(",") if pattern.strip()
+            pattern.strip()
+            for pattern in additional_ignore_str.split(",")
+            if pattern.strip()
         ]
 
         self._sanitize_chunk_defaults()
 
         # Reranker configuration
-        self.reranker_enabled = os.getenv("CODE_RAG_RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
-        self.reranker_model = os.getenv("CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+        self.reranker_enabled = os.getenv(
+            "CODE_RAG_RERANKER_ENABLED", "true"
+        ).lower() in ("true", "1", "yes")
+        self.reranker_model = os.getenv(
+            "CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
         self.reranker_multiplier = int(os.getenv("CODE_RAG_RERANKER_MULTIPLIER", "2"))
 
         # Logging configuration
         self.log_level = os.getenv("CODE_RAG_LOG_LEVEL", "INFO").upper()
 
         # Incremental indexing configuration
-        self.reindex_debounce_minutes = self._get_int_env("CODE_RAG_REINDEX_DEBOUNCE_MINUTES", 10)
-        self.verify_changes_with_hash = os.getenv("CODE_RAG_VERIFY_CHANGES_WITH_HASH", "true").lower() in ("true", "1", "yes")
+        self.reindex_debounce_minutes = self._get_int_env(
+            "CODE_RAG_REINDEX_DEBOUNCE_MINUTES", 10
+        )
+        self.verify_changes_with_hash = os.getenv(
+            "CODE_RAG_VERIFY_CHANGES_WITH_HASH", "true"
+        ).lower() in ("true", "1", "yes")
 
         # Model idle timeout configuration (in seconds)
         # Default: 1800 seconds (30 minutes)
@@ -58,7 +75,9 @@ class Config:
         # Shared embedding server configuration
         # When enabled, MCP instances share a single model via HTTP server
         # Server auto-starts on demand and auto-terminates when idle
-        self.shared_server_enabled = os.getenv("CODE_RAG_SHARED_SERVER", "true").lower() in ("true", "1", "yes")
+        self.shared_server_enabled = os.getenv(
+            "CODE_RAG_SHARED_SERVER", "true"
+        ).lower() in ("true", "1", "yes")
         self.shared_server_port = self._get_int_env("CODE_RAG_SHARED_SERVER_PORT", 8199)
 
     @staticmethod
@@ -66,7 +85,9 @@ class Config:
         """Get the default database path in the user's cache directory."""
         # Use platformdirs logic for cross-platform cache directory
         if os.name == "nt":  # Windows
-            cache_dir = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+            cache_dir = Path(
+                os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+            )
         elif os.uname().sysname == "Darwin":  # macOS
             cache_dir = Path.home() / "Library" / "Caches"
         else:  # Linux and other Unix-like

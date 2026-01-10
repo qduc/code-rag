@@ -1,9 +1,9 @@
 """SentenceTransformers implementation of the embedding interface."""
 
-from typing import List, Optional
+import gc
 import threading
 import time
-import gc
+from typing import List, Optional
 
 from sentence_transformers import SentenceTransformer
 
@@ -22,7 +22,7 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         self,
         model_name: str = "all-MiniLM-L6-v2",
         lazy_load: bool = False,
-        idle_timeout: int = 1800
+        idle_timeout: int = 1800,
     ):
         """
         Initialize the SentenceTransformers model.
@@ -58,14 +58,15 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         with self._loading_lock:
             if self.model is None:
                 self.model = SentenceTransformer(
-                    self.model_name,
-                    trust_remote_code=True
+                    self.model_name, trust_remote_code=True
                 )
 
     def start_background_loading(self):
         """Start loading the model in a background thread."""
         if self._loading_thread is None:
-            self._loading_thread = threading.Thread(target=self._load_model, daemon=True)
+            self._loading_thread = threading.Thread(
+                target=self._load_model, daemon=True
+            )
             self._loading_thread.start()
 
     def _start_cleanup_thread(self):
@@ -75,7 +76,7 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
             self._cleanup_thread = threading.Thread(
                 target=self._cleanup_loop,
                 daemon=True,
-                name=f"model-cleanup-{self.model_name}"
+                name=f"model-cleanup-{self.model_name}",
             )
             self._cleanup_thread.start()
 
@@ -100,6 +101,7 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
                         gc.collect()
                         try:
                             import torch
+
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                         except ImportError:
@@ -182,6 +184,7 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
                 gc.collect()
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 except ImportError:
@@ -205,6 +208,7 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
             gc.collect()
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except ImportError:

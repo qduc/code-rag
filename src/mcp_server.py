@@ -12,17 +12,15 @@ Design Philosophy:
 from __future__ import annotations
 
 import asyncio
-import threading
-import json
-import sys
-import signal
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+import signal
+import sys
+import threading
+from typing import Any, Dict, List, Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
 
 from .config.config import Config
 
@@ -183,7 +181,9 @@ async def list_tools() -> list[Tool]:
                     "include_paths": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Only include files whose paths contain these strings (e.g. ['src/api', 'tests/']).",
+                        "description": (
+                            "Only include files whose paths contain these strings (e.g. ['src/api', 'tests/'])."
+                        ),
                     },
                 },
                 "required": ["codebase_path", "query"],
@@ -197,9 +197,7 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(
-    name: str,
-    arguments: Any,
-    _api_wait_timeout: float = 30.0
+    name: str, arguments: Any, _api_wait_timeout: float = 30.0
 ) -> list[TextContent | ImageContent | EmbeddedResource]:
     """Handle tool calls from Claude.
 
@@ -210,7 +208,7 @@ async def call_tool(
         arguments: Tool arguments
         _api_wait_timeout: Internal parameter for testing - timeout in seconds to wait for API initialization
     """
-    global api
+    # global api
 
     if api is None:
         # If a request arrives very shortly after server startup, the API may still be
@@ -219,10 +217,12 @@ async def call_tool(
         # We wait up to 30 seconds to allow for model loading (e.g., downloading embeddings).
         try:
             loop = asyncio.get_running_loop()
+
             # Wait for the API to be ready in the background thread
             # This accounts for model loading time on first startup
             def wait_for_api(timeout=_api_wait_timeout):
                 return api_ready_event.wait(timeout)
+
             await loop.run_in_executor(None, wait_for_api)
         except Exception:
             # If waiting fails for any reason (no running loop etc.), fall through and return
@@ -246,7 +246,9 @@ async def call_tool(
             include_paths = arguments.get("include_paths")
 
             if not codebase_path:
-                return [TextContent(type="text", text="Error: 'codebase_path' is required")]
+                return [
+                    TextContent(type="text", text="Error: 'codebase_path' is required")
+                ]
             if not query:
                 return [TextContent(type="text", text="Error: 'query' is required")]
 
@@ -263,7 +265,9 @@ async def call_tool(
             )
 
             if not result["success"]:
-                return [TextContent(type="text", text=result.get("error", "Unknown error"))]
+                return [
+                    TextContent(type="text", text=result.get("error", "Unknown error"))
+                ]
 
             # Perform search with optional context expansion
             # Note: search will use the same auto-generated collection name
@@ -282,15 +286,18 @@ async def call_tool(
         else:
             return [TextContent(type="text", text=f"Error: Unknown tool '{name}'")]
 
-    except Exception as e:
+    except Exception:
         import traceback
+
         error_details = traceback.format_exc()
-        return [TextContent(type="text", text=f"Error executing '{name}':\n{error_details}")]
+        return [
+            TextContent(type="text", text=f"Error executing '{name}':\n{error_details}")
+        ]
 
 
 async def async_main():
     """Run the MCP server (async implementation)."""
-    global api
+    # global api
 
     # Run the server
     async with stdio_server() as (read_stream, write_stream):
@@ -301,6 +308,7 @@ async def async_main():
             global api
             try:
                 from .api import CodeRAGAPI
+
                 config = Config()
                 api = CodeRAGAPI(
                     database_type=config.get_database_type(),
@@ -308,7 +316,10 @@ async def async_main():
                     reranker_enabled=config.is_reranker_enabled(),
                     lazy_load_models=True,  # Defer model loading for fast startup
                 )
-                print("Code-RAG MCP server initialized (models loading in background)", file=sys.stderr)
+                print(
+                    "Code-RAG MCP server initialized (models loading in background)",
+                    file=sys.stderr,
+                )
                 # Start loading models in background immediately after initialization
                 api.start_background_loading()
                 # Signal that `api` has been initialized and is ready to accept calls

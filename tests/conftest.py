@@ -1,8 +1,8 @@
 """Pytest configuration and shared fixtures for the tests package."""
 
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +17,7 @@ def pytest_configure(config):
 
     # Disable shared server mode during tests to avoid connection issues
     import os
+
     os.environ["CODE_RAG_SHARED_SERVER"] = "false"
 
 
@@ -40,8 +41,9 @@ def mock_sentence_transformer_model():
 
     Returns a factory function that creates mock models with controllable behavior.
     """
-    import numpy as np
     from unittest.mock import MagicMock
+
+    import numpy as np
 
     def create_mock_model(embedding_dim=384, load_delay=0.0):
         """Create a mock model that behaves like SentenceTransformer.
@@ -96,4 +98,5 @@ def shared_temp_db():
     yield temp_dir
     # Cleanup happens after all tests complete
     import shutil
+
     shutil.rmtree(temp_dir, ignore_errors=True)

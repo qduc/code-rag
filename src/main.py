@@ -4,21 +4,17 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Optional
-from dotenv import load_dotenv
 
-from .config.config import Config
 from .api import CodeRAGAPI
+from .config.config import Config
 from .database.database_interface import DatabaseInterface
 from .embeddings.embedding_interface import EmbeddingInterface
-from .embeddings.openai_embedding import OpenAIEmbedding
-from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
 from .processor.file_processor import FileProcessor
 from .reranker.reranker_interface import RerankerInterface
-from .reranker.cross_encoder_reranker import CrossEncoderReranker
-from pathlib import PurePath
 
 # env_path = Path(__file__).resolve().parent / ".env"
 # load_dotenv(env_path)
+
 
 def process_codebase(
     root_path: str,
@@ -156,7 +152,9 @@ def query_session(
                     documents = results["documents"][0]
 
                     # Rerank documents
-                    reranked_indices = reranker.rerank(query, documents, top_k=n_results)
+                    reranked_indices = reranker.rerank(
+                        query, documents, top_k=n_results
+                    )
 
                     # Reorder results based on reranking
                     reranked_docs = []
@@ -178,12 +176,10 @@ def query_session(
 
             print(f"\nFound {len(results['documents'][0])} results:\n")
 
-            for i, (doc, metadata, distance) in enumerate(
-                zip(
-                    results["documents"][0],
-                    results["metadatas"][0],
-                    results["distances"][0],
-                )
+            for doc, metadata, distance in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
             ):
                 file_path = metadata.get("file_path", "Unknown")
                 start_line = metadata.get("start_line")
@@ -229,6 +225,7 @@ def query_session(
             break
         except Exception as e:
             print(f"\nError during query: {e}")
+
 
 def main():
     """Main entry point for the code-rag CLI tool."""
@@ -357,7 +354,9 @@ def main():
     # Define validation callback for user confirmation
     def validation_callback(path: Path) -> bool:
         """Ask user for confirmation if path doesn't look like a codebase."""
-        print("\nWarning: The target directory does not appear to contain a typical codebase.")
+        print(
+            "\nWarning: The target directory does not appear to contain a typical codebase."
+        )
         try:
             resp = input("Continue indexing this directory? [y/N]: ").strip().lower()
             return resp in ("y", "yes")
@@ -413,7 +412,7 @@ def main():
         embedding_model,
         reranker=reranker,
         n_results=args.results,
-        reranker_multiplier=reranker_multiplier
+        reranker_multiplier=reranker_multiplier,
     )
 
     # Cleanup

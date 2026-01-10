@@ -10,12 +10,11 @@ Performance optimization:
 - One integration test uses real model loading to verify actual model initialization
 """
 
-import asyncio
 import tempfile
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -61,12 +60,16 @@ class TestRequestDuringModelLoading:
 
     def test_embed_batch_blocks_on_load(self, mock_sentence_transformer_model):
         """Test that embed_batch() blocks until model is loaded (using mock for speed)."""
+
         # Create a factory that returns the mock with a delay
         def create_delayed_mock(*args, **kwargs):
             return mock_sentence_transformer_model(load_delay=0.1)
 
         # Patch where SentenceTransformer is actually used (in the embedding module)
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_delayed_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_delayed_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
             embedding.start_background_loading()
 
@@ -89,12 +92,18 @@ class TestRequestDuringModelLoading:
                 assert isinstance(result, list)
                 assert len(result) > 0
 
-    def test_get_embedding_dimension_blocks_on_load(self, mock_sentence_transformer_model):
+    def test_get_embedding_dimension_blocks_on_load(
+        self, mock_sentence_transformer_model
+    ):
         """Test that get_embedding_dimension() blocks until model is loaded (using mock)."""
+
         def create_mock(*args, **kwargs):
             return mock_sentence_transformer_model(load_delay=0.05)
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
             embedding.start_background_loading()
 
@@ -112,10 +121,16 @@ class TestRequestDuringModelLoading:
 
     def test_concurrent_requests_during_loading(self, mock_sentence_transformer_model):
         """Test that multiple concurrent requests all block and proceed successfully (using mock)."""
-        def create_mock(*args, **kwargs):
-            return mock_sentence_transformer_model(load_delay=0.2)  # 200ms simulated load
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        def create_mock(*args, **kwargs):
+            return mock_sentence_transformer_model(
+                load_delay=0.2
+            )  # 200ms simulated load
+
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
             embedding.start_background_loading()
 
@@ -126,16 +141,15 @@ class TestRequestDuringModelLoading:
                 """Simulate a request that embeds text."""
                 try:
                     result = embedding.embed(query_text)
-                    results.append({
-                        'request_id': request_id,
-                        'success': True,
-                        'embedding_length': len(result)
-                    })
+                    results.append(
+                        {
+                            "request_id": request_id,
+                            "success": True,
+                            "embedding_length": len(result),
+                        }
+                    )
                 except Exception as e:
-                    errors.append({
-                        'request_id': request_id,
-                        'error': str(e)
-                    })
+                    errors.append({"request_id": request_id, "error": str(e)})
 
             # Launch multiple concurrent requests immediately
             threads = []
@@ -154,15 +168,19 @@ class TestRequestDuringModelLoading:
 
             # All results should have valid embeddings
             for result in results:
-                assert result['success'] is True
-                assert result['embedding_length'] > 0
+                assert result["success"] is True
+                assert result["embedding_length"] > 0
 
     def test_sequential_requests_during_loading(self, mock_sentence_transformer_model):
         """Test that sequential requests during loading all proceed without error (using mock)."""
+
         def create_mock(*args, **kwargs):
             return mock_sentence_transformer_model(load_delay=0.1)
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
             embedding.start_background_loading()
 
@@ -213,8 +231,8 @@ class TestRequestDuringModelLoading:
                 )
 
                 # Should succeed despite potential model loading in progress
-                assert result['success'] is True
-                assert result['total_chunks'] > 0
+                assert result["success"] is True
+                assert result["total_chunks"] > 0
 
                 api.close()
                 print("API.ensure_indexed succeeded during model loading")
@@ -287,7 +305,9 @@ class TestRequestDuringModelLoading:
                     # but we allow some tolerance since timing varies
                     assert elapsed >= 2.0  # Conservative lower bound
 
-                    print(f"call_tool successfully waited {elapsed:.2f}s for API initialization")
+                    print(
+                        f"call_tool successfully waited {elapsed:.2f}s for API initialization"
+                    )
 
                     # Cleanup
                     init_thread.join()
@@ -335,7 +355,9 @@ class TestRequestDuringModelLoading:
 
             # Should have waited approximately the timeout duration
             # Allow some tolerance for scheduling overhead
-            assert elapsed >= 0.05, f"Should have waited at least 0.05s, but only waited {elapsed:.3f}s"
+            assert (
+                elapsed >= 0.05
+            ), f"Should have waited at least 0.05s, but only waited {elapsed:.3f}s"
             print(f"Returned error after {elapsed:.2f}s wait")
         finally:
             mcp_mod.api = original_api
@@ -343,10 +365,14 @@ class TestRequestDuringModelLoading:
 
     def test_embedding_dimension_with_lazy_load(self, mock_sentence_transformer_model):
         """Test that get_embedding_dimension() correctly waits for lazy-loaded model (using mock)."""
+
         def create_mock(*args, **kwargs):
             return mock_sentence_transformer_model(load_delay=0.05)
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
 
             # Before loading, model is None
@@ -365,12 +391,18 @@ class TestRequestDuringModelLoading:
 class TestModelLoadingErrorHandling:
     """Tests for error handling during model loading."""
 
-    def test_ensure_model_loaded_handles_no_background_thread(self, mock_sentence_transformer_model):
+    def test_ensure_model_loaded_handles_no_background_thread(
+        self, mock_sentence_transformer_model
+    ):
         """Test that _ensure_model_loaded works even without background thread (using mock)."""
+
         def create_mock(*args, **kwargs):
             return mock_sentence_transformer_model()
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
 
             # Don't start background loading, but try to use the model
@@ -380,12 +412,18 @@ class TestModelLoadingErrorHandling:
             assert embedding.model is not None
             assert isinstance(result, list)
 
-    def test_multiple_loading_attempts_thread_safe(self, mock_sentence_transformer_model):
+    def test_multiple_loading_attempts_thread_safe(
+        self, mock_sentence_transformer_model
+    ):
         """Test that multiple threads trying to load the model handle it correctly (using mock)."""
+
         def create_mock(*args, **kwargs):
             return mock_sentence_transformer_model(load_delay=0.1)
 
-        with patch('src.embeddings.sentence_transformer_embedding.SentenceTransformer', side_effect=create_mock):
+        with patch(
+            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            side_effect=create_mock,
+        ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
 
             def load_and_use():

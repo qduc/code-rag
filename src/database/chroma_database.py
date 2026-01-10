@@ -1,7 +1,6 @@
 """ChromaDB implementation of the database interface."""
 
-import os
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
@@ -28,7 +27,10 @@ class ChromaDatabase(DatabaseInterface):
         self.collection = None
 
     def initialize(
-        self, collection_name: str, vector_size: int = 384, model_name: Optional[str] = None
+        self,
+        collection_name: str,
+        vector_size: int = 384,
+        model_name: Optional[str] = None,
     ) -> Optional[str]:
         """
         Initialize or get a collection in the database.
@@ -59,16 +61,24 @@ class ChromaDatabase(DatabaseInterface):
 
             if existing_dim is not None and int(existing_dim) != vector_size:
                 if stored_model:
-                    print(f"Dimension mismatch: Collection '{collection_name}' was created with model '{stored_model}' (dimension {existing_dim}).")
-                    print(f"Loading collection with the original model...")
+                    print(
+                        f"Dimension mismatch: Collection '{collection_name}' was created "
+                        f"with model '{stored_model}' (dimension {existing_dim})."
+                    )
+                    print("Loading collection with the original model...")
                     return stored_model
                 else:
                     # No model name stored, we can't recover gracefully
-                    print(f"Dimension mismatch: Collection '{collection_name}' has dimension {existing_dim}, requested {vector_size}.")
-                    print("No model name stored in collection. Use --reindex to recreate with the new model.")
+                    print(
+                        f"Dimension mismatch: Collection '{collection_name}' has dimension "
+                        f"{existing_dim}, requested {vector_size}."
+                    )
+                    print(
+                        "No model name stored in collection. Use --reindex to recreate with the new model."
+                    )
                     raise ValueError(
-                        f"Dimension mismatch and no model name stored. "
-                        f"Use --reindex to recreate the collection with the new model."
+                        "Dimension mismatch and no model name stored. "
+                        "Use --reindex to recreate the collection with the new model."
                     )
 
             return None
@@ -128,9 +138,7 @@ class ChromaDatabase(DatabaseInterface):
             metadatas=metadatas,
         )
 
-    def query(
-        self, embedding: List[float], n_results: int = 5
-    ) -> Dict[str, Any]:
+    def query(self, embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """
         Query the database with an embedding vector.
 
@@ -225,10 +233,7 @@ class ChromaDatabase(DatabaseInterface):
 
         try:
             # Try using where clause to filter by file_path
-            results = self.collection.get(
-                where={"file_path": file_path},
-                include=[]
-            )
+            results = self.collection.get(where={"file_path": file_path}, include=[])
             return results.get("ids", [])
         except Exception:
             # ChromaDB might not support this where clause, fallback to manual filter
