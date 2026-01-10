@@ -290,7 +290,9 @@ class TestRequestDuringModelLoading:
                     init_thread.start()
 
                     # Verify API is not initialized yet (state assertion)
-                    assert mcp_mod.api is None, "API should not be initialized at test start"
+                    assert (
+                        mcp_mod.api is None
+                    ), "API should not be initialized at test start"
 
                     # Call tool - should wait for API to initialize
                     result = await call_tool(
@@ -304,13 +306,18 @@ class TestRequestDuringModelLoading:
                     # State-based assertions: verify the waiting behavior through outcomes
                     # 1. Tool should have succeeded (not returned initialization error)
                     assert len(result) == 1, "Tool should return exactly one result"
-                    assert "not initialized" not in result[0].text.lower(), \
-                        "Tool should not return 'not initialized' error - call_tool should have waited"
+                    assert (
+                        "not initialized" not in result[0].text.lower()
+                    ), "Tool should not return 'not initialized' error - call_tool should have waited"
 
                     # 2. API should now be initialized (after call_tool returns)
-                    assert mcp_mod.api is not None, "API should be initialized after call_tool returns"
+                    assert (
+                        mcp_mod.api is not None
+                    ), "API should be initialized after call_tool returns"
 
-                    print("✓ call_tool correctly waited for API initialization and succeeded")
+                    print(
+                        "✓ call_tool correctly waited for API initialization and succeeded"
+                    )
 
                     # Cleanup
                     init_thread.join()

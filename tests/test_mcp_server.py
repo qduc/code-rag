@@ -978,7 +978,9 @@ class TestPerformanceAndScaling:
 
         # Verify search returns valid results (state-based assertions)
         assert isinstance(results, list), "Search should return a list of results"
-        assert len(results) > 0, "Search should find results for 'function definition' in indexed codebase"
+        assert (
+            len(results) > 0
+        ), "Search should find results for 'function definition' in indexed codebase"
 
         # Verify result structure
         for result in results:
