@@ -107,6 +107,17 @@ export CODE_RAG_CHUNK_SIZE="2048"
 export CODE_RAG_ADDITIONAL_IGNORE_PATTERNS="*.tmp,*.bak,logs/"
 ```
 
+
+### Configuration Files
+
+Code-RAG looks for configuration in the following order (first found wins):
+
+1. `CODE_RAG_CONFIG_FILE` environment variable
+2. `code-rag.config` in the current directory (project-specific)
+3. `~/.config/code-rag/config` (user-global)
+   - **Auto-created with default values** if it doesn't exist.
+4. Shell environment variables (highest priority - these override files)
+
 Full configuration options in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md#configuration-system).
 
 ## How It Works
