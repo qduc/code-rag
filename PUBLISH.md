@@ -47,6 +47,6 @@ twine upload dist/*
 
 ## 7. Versioning
 To publish a new version later:
-1. Update the version in `pyproject.toml` and `src/__init__.py`.
+1. Update the version in `pyproject.toml` and `src/code_rag/__init__.py`.
 2. Delete the old `dist/` folder.
 3. Repeat steps 3, 4, and 6.

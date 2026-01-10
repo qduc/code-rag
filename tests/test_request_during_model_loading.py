@@ -18,9 +18,11 @@ from unittest.mock import patch
 
 import pytest
 
-from src.api import CodeRAGAPI
-from src.embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
-from src.mcp_server import call_tool
+from code_rag.api import CodeRAGAPI
+from code_rag.embeddings.sentence_transformer_embedding import (
+    SentenceTransformerEmbedding,
+)
+from code_rag.mcp_server import call_tool
 
 
 class TestRequestDuringModelLoading:
@@ -67,7 +69,7 @@ class TestRequestDuringModelLoading:
 
         # Patch where SentenceTransformer is actually used (in the embedding module)
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_delayed_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -101,7 +103,7 @@ class TestRequestDuringModelLoading:
             return mock_sentence_transformer_model(load_delay=0.05)
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -128,7 +130,7 @@ class TestRequestDuringModelLoading:
             )  # 200ms simulated load
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -178,7 +180,7 @@ class TestRequestDuringModelLoading:
             return mock_sentence_transformer_model(load_delay=0.1)
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -250,7 +252,7 @@ class TestRequestDuringModelLoading:
         - Verifies API is initialized after tool returns
         - This approach is environment-independent and reliable across CI/local
         """
-        import src.mcp_server as mcp_mod
+        import code_rag.mcp_server as mcp_mod
 
         # Save original state
         original_api = mcp_mod.api
@@ -335,7 +337,7 @@ class TestRequestDuringModelLoading:
         Verifies the error is returned after the wait timeout, not immediately.
         This test verifies that the wait timeout in call_tool is enforced.
         """
-        import src.mcp_server as mcp_mod
+        import code_rag.mcp_server as mcp_mod
 
         original_api = mcp_mod.api
         original_event = mcp_mod.api_ready_event
@@ -380,7 +382,7 @@ class TestRequestDuringModelLoading:
             return mock_sentence_transformer_model(load_delay=0.05)
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -410,7 +412,7 @@ class TestModelLoadingErrorHandling:
             return mock_sentence_transformer_model()
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)
@@ -431,7 +433,7 @@ class TestModelLoadingErrorHandling:
             return mock_sentence_transformer_model(load_delay=0.1)
 
         with patch(
-            "src.embeddings.sentence_transformer_embedding.SentenceTransformer",
+            "code_rag.embeddings.sentence_transformer_embedding.SentenceTransformer",
             side_effect=create_mock,
         ):
             embedding = SentenceTransformerEmbedding(lazy_load=True)

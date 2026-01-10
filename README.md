@@ -14,16 +14,17 @@ source .venv/bin/activate
 # Install
 pip install -e .
 
-# Index and search your codebase
+# Start the MCP server (default)
 code-rag
 
-# That's it. Start asking questions about your code.
+# Or use the interactive CLI search
+code-rag-cli
 ```
 
-## Example
+## Example (CLI)
 
 ```
-$ code-rag --path /home/user/myproject
+$ code-rag-cli --path /home/user/myproject
 
 Processing codebase... Found 247 files
 Indexed 1,234 chunks in 12s
@@ -31,7 +32,7 @@ Indexed 1,234 chunks in 12s
 Query: authentication logic
 
 Result 1 | Similarity: 0.85
-File: src/auth/authenticator.py (lines 45-78)
+File: src/code_rag/auth/authenticator.py (lines 45-78)
 
 class Authenticator:
     """Handle user authentication and session management."""
@@ -134,7 +135,7 @@ Once configured, Claude can automatically search your codebase:
 You: "Find the database connection logic"
 
 Claude: [Automatically searches and finds the code]
-        "I found the database connection logic in src/db/connection.py..."
+        "I found the database connection logic in src/code_rag/db/connection.py..."
 ```
 
 See [docs/mcp.md](docs/mcp.md) for detailed setup and troubleshooting.
@@ -143,19 +144,19 @@ See [docs/mcp.md](docs/mcp.md) for detailed setup and troubleshooting.
 
 ```bash
 # Different codebase
-code-rag --path /path/to/repo
+code-rag-cli --path /path/to/repo
 
 # Force reindex
-code-rag --reindex
+code-rag-cli --reindex
 
 # More results
-code-rag --results 10
+code-rag-cli --results 10
 
 # Different embedding model (better for code)
-code-rag --model text-embedding-3-small # need to set OPENAI_API_KEY env
+code-rag-cli --model text-embedding-3-small # need to set OPENAI_API_KEY env
 
 # Use Qdrant instead of ChromaDB
-code-rag --database qdrant
+code-rag-cli --database qdrant
 ```
 
 ## Configuration
@@ -225,7 +226,7 @@ Pluggable architecture - swap databases, embedding models, or add new ones.
 Use programmatically:
 
 ```python
-from src.api import CodeRAGAPI
+from code_rag.api import CodeRAGAPI
 
 api = CodeRAGAPI(database_type="chroma", embedding_model="all-MiniLM-L6-v2")
 api.initialize_collection("myproject")

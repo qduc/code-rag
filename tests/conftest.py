@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))  # Ensure src/ is importable when running tests
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))  # Ensure code_rag package is importable
 
 
 def pytest_configure(config):

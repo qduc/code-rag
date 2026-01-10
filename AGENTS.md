@@ -53,11 +53,11 @@ Environment variables control defaults:
 - `CODE_RAG_DATABASE_TYPE`: "chroma" or "qdrant"
 - `CODE_RAG_EMBEDDING_MODEL`: Model name
 - `CODE_RAG_CHUNK_SIZE`: Characters per chunk
-- See `src/config/config.py` for full list
+- See `src/code_rag/config/config.py` for full list
 
 ### 5. Entry Points
-- **CLI** (`code-rag`): Interactive query session
-- **MCP Server** (`code-rag-mcp`): Exposes search to AI assistants (Claude, etc.)
+- **CLI** (`code-rag-cli`): Interactive query session
+- **MCP Server** (`code-rag` or `code-rag-mcp`): Exposes search to AI assistants (Claude, etc.)
 - **Embedding Server** (`code-rag-server`): Shared model server for multiple MCP instances
 
 ### 6. Shared Embedding Server
@@ -73,9 +73,9 @@ Configuration (via environment):
 - `CODE_RAG_SHARED_SERVER_PORT=8199`
 
 Files:
-- `src/embedding_server.py` - FastAPI server
-- `src/embeddings/http_embedding.py` - HTTP client for embedding
-- `src/reranker/http_reranker.py` - HTTP client for reranking
+- `src/code_rag/embedding_server.py` - FastAPI server
+- `src/code_rag/embeddings/http_embedding.py` - HTTP client for embedding
+- `src/code_rag/reranker/http_reranker.py` - HTTP client for reranking
 
 ## Quick Start
 
@@ -83,14 +83,17 @@ Files:
 # Install
 pip install -e .
 
-# Index current directory and start querying
+# Run MCP server (default)
 code-rag
 
+# Index and start querying via CLI
+code-rag-cli
+
 # Index specific repo with different database
-code-rag --path /path/to/repo --database qdrant
+code-rag-cli --path /path/to/repo --database qdrant
 
 # Force reindexing
-code-rag --reindex
+code-rag-cli --reindex
 ```
 
 ## Common Tasks
@@ -108,12 +111,12 @@ code-rag --reindex
 → Extend `SyntaxChunker.LANGUAGE_PACKAGES` with tree-sitter binding
 
 **Add new MCP tools?**
-→ Update `list_tools()` and `call_tool()` in `src/mcp_server.py`
+→ Update `list_tools()` and `call_tool()` in `src/code_rag/mcp_server.py`
 
 ## Where to Learn More
 
 - **Implementation details**: See `IMPLEMENTATION.md`
-- **Code**: Start with `src/main.py` (CLI orchestration)
+- **Code**: Start with `src/code_rag/main.py` (CLI orchestration)
 - **Tests**: `pytest` to run test suite
 - **Questions?**: Read the code - it's well-structured and follows the plugin pattern
 

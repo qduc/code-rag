@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from src.api import CodeRAGAPI
+from code_rag.api import CodeRAGAPI
 
 
 def create_dummy_codebase(base_path):

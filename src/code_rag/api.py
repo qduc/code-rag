@@ -520,7 +520,7 @@ class CodeRAGAPI:
             collection_name: Name of the collection to search (uses active collection if None)
             expand_context: If True, fetch adjacent chunks to provide more context
             file_types: Optional list of file extensions to filter by (e.g. ['.py', '.md'])
-            include_paths: Optional list of path substrings to include (e.g. ['src/', 'tests/'])
+            include_paths: Optional list of path substrings to include (e.g. ['src/code_rag/', 'tests/'])
 
         Returns:
             List of search results, each containing:

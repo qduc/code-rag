@@ -41,7 +41,7 @@ This document contains detailed implementation notes, patterns, and design decis
 Each chunk includes:
 ```python
 {
-    "file_path": "src/example.py",
+    "file_path": "src/code_rag/example.py",
     "chunk_index": 0,           # Position in file (0-indexed)
     "total_chunks": 5,          # Total chunks from this file
     "content": "chunk text..."  # The actual code chunk
@@ -227,7 +227,7 @@ Embedding models:
 
 ### Environment Variables
 
-Located in `src/config/config.py`. All have fallback defaults:
+Located in `src/code_rag/config/config.py`. All have fallback defaults:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -403,7 +403,7 @@ elif args.database == "qdrant":
 pytest
 
 # With coverage
-pytest --cov=src
+pytest --cov=code_rag
 
 # Specific module
 pytest tests/test_file_processor.py
@@ -419,13 +419,13 @@ pytest tests/test_file_processor.py
 
 ```bash
 # Format code
-black src/
+black src/code_rag/
 
 # Lint
-flake8 src/
+flake8 src/code_rag/
 
 # Type checking (if configured)
-mypy src/
+mypy src/code_rag/
 ```
 
 ---

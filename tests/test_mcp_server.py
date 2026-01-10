@@ -18,9 +18,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import src.mcp_server as mcp_mod
-from src.api import CodeRAGAPI
-from src.mcp_server import call_tool, format_search_results, list_tools
+import code_rag.mcp_server as mcp_mod
+from code_rag.api import CodeRAGAPI
+from code_rag.mcp_server import call_tool, format_search_results, list_tools
 
 # ============================================================================
 # Fixtures
@@ -410,7 +410,7 @@ class TestCallToolValidation:
     async def test_call_tool_missing_codebase_path(self):
         """Test that error is returned when codebase_path is missing."""
         # Mock the global api
-        with patch("src.mcp_server.api", None):
+        with patch("code_rag.mcp_server.api", None):
             result = await call_tool(
                 "search_codebase", {"query": "test"}, _api_wait_timeout=0.1
             )
@@ -420,7 +420,7 @@ class TestCallToolValidation:
     @pytest.mark.asyncio
     async def test_call_tool_missing_query(self):
         """Test that error is returned when query is missing."""
-        with patch("src.mcp_server.api", None):
+        with patch("code_rag.mcp_server.api", None):
             result = await call_tool(
                 "search_codebase",
                 {"codebase_path": "/path/to/code"},
@@ -503,7 +503,7 @@ class TestCallToolValidation:
     async def test_call_tool_unknown_tool_name(self):
         """Test that error is returned for unknown tool name."""
         mock_api = MagicMock()
-        with patch("src.mcp_server.api", mock_api):
+        with patch("code_rag.mcp_server.api", mock_api):
             result = await call_tool("unknown_tool", {})
             assert len(result) == 1
             assert "Unknown tool" in result[0].text
@@ -515,7 +515,7 @@ class TestCallToolValidation:
         mock_api.ensure_indexed.return_value = {"success": True}
         mock_api.search.return_value = []
 
-        with patch("src.mcp_server.api", mock_api):
+        with patch("code_rag.mcp_server.api", mock_api):
             await call_tool(
                 "search_codebase",
                 {
@@ -543,7 +543,7 @@ class TestCallToolSearch:
         """Test successful search execution."""
         api_instance, codebase_path = indexed_api
 
-        with patch("src.mcp_server.api", api_instance):
+        with patch("code_rag.mcp_server.api", api_instance):
             result = await call_tool(
                 "search_codebase",
                 {
@@ -574,7 +574,7 @@ class TestCallToolSearch:
             # Verify it's not indexed yet
             assert fresh_api.count() == 0
 
-            with patch("src.mcp_server.api", fresh_api):
+            with patch("code_rag.mcp_server.api", fresh_api):
                 result = await call_tool(
                     "search_codebase",
                     {
@@ -598,7 +598,7 @@ class TestCallToolSearch:
             "error": "Path does not exist: /nonexistent/path",
         }
 
-        with patch("src.mcp_server.api", mock_api):
+        with patch("code_rag.mcp_server.api", mock_api):
             result = await call_tool(
                 "search_codebase",
                 {
@@ -615,7 +615,7 @@ class TestCallToolSearch:
         """Test that search results are properly formatted."""
         api_instance, codebase_path = indexed_api
 
-        with patch("src.mcp_server.api", api_instance):
+        with patch("code_rag.mcp_server.api", api_instance):
             result = await call_tool(
                 "search_codebase",
                 {
@@ -842,7 +842,7 @@ class TestErrorHandling:
         mock_api = MagicMock()
         mock_api.ensure_indexed.side_effect = RuntimeError("Test error")
 
-        with patch("src.mcp_server.api", mock_api):
+        with patch("code_rag.mcp_server.api", mock_api):
             result = await call_tool(
                 "search_codebase",
                 {
@@ -923,7 +923,7 @@ class TestEdgeCases:
         mock_api.ensure_indexed.return_value = {"success": True}
         mock_api.search.return_value = []
 
-        with patch("src.mcp_server.api", mock_api):
+        with patch("code_rag.mcp_server.api", mock_api):
             result = await call_tool(
                 "search_codebase",
                 {
@@ -1016,7 +1016,7 @@ class TestIntegration:
         assert api_instance is not None
 
         # Ensure indexed
-        with patch("src.mcp_server.api", api_instance):
+        with patch("code_rag.mcp_server.api", api_instance):
             index_result = api_instance.ensure_indexed(
                 temp_codebase,
                 collection_name="test_codebase",
@@ -1053,7 +1053,7 @@ class TestIntegration:
             # Create files in second codebase
             (Path(temp2) / "test2.py").write_text("def function2():\n    pass")
 
-            with patch("src.mcp_server.api", api_instance):
+            with patch("code_rag.mcp_server.api", api_instance):
                 # Search in first codebase
                 result1 = await call_tool(
                     "search_codebase",

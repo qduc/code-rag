@@ -122,7 +122,7 @@ class HttpEmbedding(EmbeddingInterface):
                     [
                         python_exe,
                         "-m",
-                        "src.embedding_server",
+                        "code_rag.embedding_server",
                         "--port",
                         str(self.port),
                     ],
@@ -137,7 +137,7 @@ class HttpEmbedding(EmbeddingInterface):
                     [
                         python_exe,
                         "-m",
-                        "src.embedding_server",
+                        "code_rag.embedding_server",
                         "--port",
                         str(self.port),
                     ],

@@ -16,20 +16,21 @@ The **final design** intentionally exposes **one tool only**:
 From the project root:
 
 ```bash
-cd /ub/home/qduc/src/code-rag
+cd /ub/home/qduc/src/code_rag/code-rag
 pip install -e .
 ```
 
 This installs:
 
-- `code-rag` (CLI)
-- `code-rag-mcp` (MCP server entry point)
+- `code-rag` (MCP server - default)
+- `code-rag-cli` (CLI search tool)
+- `code-rag-mcp` (MCP server alias)
 - All required dependencies, including `mcp>=0.9.0`
 
 Verify that the MCP server is on your PATH:
 
 ```bash
-which code-rag-mcp
+which code-rag
 ```
 
 ---
@@ -42,8 +43,8 @@ The MCP server uses stdio transport.
 
 ```bash
 claude mcp add code-rag \
-  --type stdio \
-  -- code-rag-mcp
+  --transport stdio \
+  -- code-rag
 ```
 
 If necessary, you can register it with an explicit path:
@@ -51,7 +52,7 @@ If necessary, you can register it with an explicit path:
 ```bash
 claude mcp add code-rag \
   --type stdio \
-  -- /ub/home/qduc/src/code-rag/.venv/bin/code-rag-mcp
+  -- /ub/home/qduc/src/code_rag/code-rag/.venv/bin/code-rag-mcp
 ```
 
 ### Manual configuration (JSON)
@@ -182,8 +183,8 @@ model, regardless of this variable.
 2. Claude calls:
    - `search_codebase(codebase_path="/home/user/myapp", query="user authentication implementation")`
 3. Claude returns locations such as:
-   - `src/auth/authenticator.py` (main authentication logic)
-   - `src/middleware/auth.py` (authentication middleware)
+   - `src/code_rag/auth/authenticator.py` (main authentication logic)
+   - `src/code_rag/middleware/auth.py` (authentication middleware)
 4. If the user wants more context, Claude uses its own file-reading capability to show full files.
 
 ---
@@ -192,8 +193,8 @@ model, regardless of this variable.
 
 ### API and MCP layering
 
-- `CodeRAGAPI` (`src/api.py`) provides a clean, reusable façade over the core Code-RAG pipeline (initialize collection, index, search, get chunks, stats, close).
-- `src/mcp_server.py` hosts the MCP server and exposes that API as tools for Claude over stdio.
+- `CodeRAGAPI` (`src/code_rag/api.py`) provides a clean, reusable façade over the core Code-RAG pipeline (initialize collection, index, search, get chunks, stats, close).
+- `src/code_rag/mcp_server.py` hosts the MCP server and exposes that API as tools for Claude over stdio.
 - The same API can later back other interfaces (e.g., HTTP, gRPC) without changing core logic.
 
 ### Single-tool, auto-indexing design (final)

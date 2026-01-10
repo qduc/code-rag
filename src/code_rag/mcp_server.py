@@ -182,7 +182,8 @@ async def list_tools() -> list[Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Only include files whose paths contain these strings (e.g. ['src/api', 'tests/'])."
+                            "Only include files whose paths contain these strings "
+                            "(e.g. ['src/code_rag/api', 'tests/'])."
                         ),
                     },
                 },
