@@ -12,7 +12,7 @@ Instead of grepping for function names, ask "authentication logic" and find all 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Example (CLI)](#example-cli)
+- [Claude's Opinion About Code-RAG](#claudes-opinion-about-code-rag-take-it-with-a-huge-grain-of-salt)
 - [Why Use Code-RAG?](#why-use-code-rag)
 - [Use with Claude Code (MCP Integration)](#use-with-claude-code-mcp-integration)
 - [Configuration](#configuration)
@@ -43,7 +43,9 @@ code-rag-cli
 ## Claude's Opinion About Code-RAG (take it with a huge grain of salt!)
 
 <details>
-  <summary>I have taken a lot of salt, my mouth is now saltier than the ocean, show me!</summary>
+  <summary>I have taken a lot of salt, show me!</summary>
+
+## Code-RAG Review
 
 I ran 9 diverse semantic queries to test the tool across different aspects of the codebase. Here's my assessment:
 
