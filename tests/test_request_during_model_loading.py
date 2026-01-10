@@ -243,6 +243,12 @@ class TestRequestDuringModelLoading:
 
         Simulates: request arrives -> API still initializing in background ->
         call_tool waits -> API finishes initializing -> call_tool proceeds successfully
+
+        This test uses state-based verification instead of timing assertions:
+        - Verifies API is not initialized when tool is called
+        - Verifies tool call succeeds (doesn't return error)
+        - Verifies API is initialized after tool returns
+        - This approach is environment-independent and reliable across CI/local
         """
         import src.mcp_server as mcp_mod
 
@@ -261,10 +267,12 @@ class TestRequestDuringModelLoading:
                     test_file = Path(temp_codebase) / "test.py"
                     test_file.write_text("def test():\n    pass")
 
-                    # Simulate delayed API initialization
-                    # Note: Real API initialization includes model loading which can take 4-5 seconds
+                    # Simulate delayed API initialization with controlled delay
+                    # Using a short, deterministic delay (0.1s) instead of real model loading
+                    # This makes the test fast and environment-independent
                     def init_api_delayed():
-                        # Simulate some startup delay (model loading happens in CodeRAGAPI init)
+                        # Simulate brief startup delay (10ms threading overhead)
+                        time.sleep(0.01)
                         api = CodeRAGAPI(
                             database_path=temp_db,
                             reranker_enabled=False,
@@ -281,13 +289,10 @@ class TestRequestDuringModelLoading:
                     init_thread = threading.Thread(target=init_api_delayed, daemon=True)
                     init_thread.start()
 
-                    # Verify API is not ready yet
-                    assert mcp_mod.api is None
+                    # Verify API is not initialized yet (state assertion)
+                    assert mcp_mod.api is None, "API should not be initialized at test start"
 
                     # Call tool - should wait for API to initialize
-                    # The wait timeout in call_tool is 30 seconds, which should be sufficient
-                    # for model loading
-                    start_time = time.time()
                     result = await call_tool(
                         "search_codebase",
                         {
@@ -295,19 +300,17 @@ class TestRequestDuringModelLoading:
                             "query": "test",
                         },
                     )
-                    elapsed = time.time() - start_time
 
-                    # Request should have succeeded (not returned initialization error)
-                    assert len(result) == 1
-                    assert "not initialized" not in result[0].text.lower()
+                    # State-based assertions: verify the waiting behavior through outcomes
+                    # 1. Tool should have succeeded (not returned initialization error)
+                    assert len(result) == 1, "Tool should return exactly one result"
+                    assert "not initialized" not in result[0].text.lower(), \
+                        "Tool should not return 'not initialized' error - call_tool should have waited"
 
-                    # Should have waited for API initialization (at least model load time ~4-5s)
-                    # but we allow some tolerance since timing varies
-                    assert elapsed >= 2.0  # Conservative lower bound
+                    # 2. API should now be initialized (after call_tool returns)
+                    assert mcp_mod.api is not None, "API should be initialized after call_tool returns"
 
-                    print(
-                        f"call_tool successfully waited {elapsed:.2f}s for API initialization"
-                    )
+                    print("✓ call_tool correctly waited for API initialization and succeeded")
 
                     # Cleanup
                     init_thread.join()
