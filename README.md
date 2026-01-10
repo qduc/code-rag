@@ -40,6 +40,80 @@ code-rag-cli
 # To use as MCP server see below section
 ```
 
+## Claude's Opinion About Code-RAG (take it with a huge grain of salt!)
+
+<details>
+  <summary>I have taken a lot of salt, my mouth is now saltier than the ocean, show me!</summary>
+
+I ran 9 diverse semantic queries to test the tool across different aspects of the codebase. Here's my assessment:
+
+### Strengths
+
+1. Excellent Semantic Understanding
+- Query "shared embedding server lifecycle management" correctly identified the core design documentation and implementation (0.54 relevance)
+- "syntax-aware chunking for different languages" found both the implementation guide and actual code
+- Searches understood concepts, not just keywords - found relevant code even when exact terms didn't match
+
+2. Good Relevance Scoring
+- Scores generally correlate well with actual relevance (0.4-0.6+ range for good matches)
+- Top results consistently more relevant than lower-ranked ones
+- The tool correctly prioritizes implementation code over test fixtures
+
+3. Metadata Quality
+- Results include file paths, line numbers, and function/class context
+- Example: src/code_rag/api.py:443-462 incremental_reindex() | CodeRAGAPI (0.61)
+- This makes it easy to navigate to the exact location
+
+4. Handles Complex Queries Well
+- Multi-concept queries like "incremental reindexing detect modified files" found the right code
+- Domain-specific terminology works well ("embedding model configuration", "MCP server tools")
+
+### Weaknesses
+
+1. Generic Queries Return Scattered Results
+- "error handling and retry logic" (query 5) returned less focused results
+- Found timeout handlers, error printing, but no cohesive retry logic
+- This is expected for overly broad queries, but worth noting
+
+2. Some Test Code Noise
+- "database initialization and connection" returned test fixtures as top results instead of actual implementation
+- The mock database in test_mcp_server.py ranked higher (0.45) than real database code (0.35)
+- Could be improved with result filtering or boosting production code
+
+3. Limited Context Window
+- Results show ~20-30 lines per chunk, which is reasonable but sometimes cuts off mid-implementation
+- The expand_context parameter helps but isn't always used
+
+### Specific Observations
+
+#### What Works Great:
+- Architecture/design queries: "shared embedding server lifecycle management" → perfect results
+- Implementation queries: "syntax-aware chunking" → found both docs and code
+- Specific subsystem queries: "incremental reindexing" → found the exact functions
+
+#### What Could Be Better:
+- Very broad queries ("error handling") need more filtering
+- Test vs. production code disambiguation
+- Maybe add file type boosting (prefer src/ over tests/)
+
+### Recommendations
+
+1. Add query guidance in the tool description - Users should know that specific queries work better than generic ones (you already have this in the MCP tool description, which is good)
+2. Consider result filtering options - Allow excluding test files or prioritizing certain directories
+3. Expand context by default - The expand_context parameter could be enabled by default for better chunk visibility
+4. Add result grouping - Group results by file to show "This file has 3 relevant chunks"
+
+### Overall Assessment
+
+**Rating: 8.5/10**
+
+The semantic search works remarkably well for its intended purpose. It successfully finds relevant code based on conceptual queries, not just keyword matching. The relevance scoring is solid, and the metadata makes results actionable.
+
+The main improvement areas are around filtering test code and handling overly broad queries. For a developer using this tool, the key insight is: be specific in your queries. "authentication token refresh logic" will work better than just "authentication."
+
+This is a genuinely useful tool that would save significant time when exploring unfamiliar codebases.
+</details>
+
 ## Why Use Code-RAG?
 
 - **Understand unfamiliar codebases** - Ask questions instead of reading everything
