@@ -54,7 +54,7 @@ Code-RAG is a CLI tool that makes codebases searchable using semantic search. It
 ### 5. Semantic Reranker (`src/code_rag/reranker/`)
 - **What**: Refines search results using Cross-Encoder models.
 - **How**: Re-scores top-K candidates from vector search for higher precision.
-- **Models**: Defaults to `mixedbread-ai/mxbai-rerank-xsmall-v1` or `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- **Models**: Defaults to `jinaai/jina-reranker-v3`.
 
 ### 6. Embedding & Database Layer
 - **Embeddings**: Swappable backends (SentenceTransformers, OpenAI, or Shared HTTP).

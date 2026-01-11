@@ -136,7 +136,7 @@ async def list_tools() -> list[Tool]:
                 "- enable_reranking: true (HIGHLY RECOMMENDED). Finds primary functions vs just references.\n"
                 "- reranker_multiplier: 2 (Fast, quality) or 5 (Comprehensive).\n"
                 "  Use 5 for architecture, unfamiliar code, or if search needs to be deeper.\n"
-                "- reranker_model: Optional. Choose a specific model (e.g. 'mixedbread-ai/mxbai-rerank-xsmall-v1').\n\n"
+                "- reranker_model: Optional. Choose a specific model (e.g. 'jinaai/jina-reranker-v3').\n\n"
                 "## Tips\n"
                 "- Reranker surfaces essential config alongside implementation.\n"
                 "- Semantic search finds code/docs — you synthesize the answer.\n"
@@ -196,7 +196,7 @@ async def list_tools() -> list[Tool]:
                     # "reranker_model": {
                     #     "type": "string",
                     #     "description": (
-                    #         "Optional: Specific reranker model to use (e.g., 'mixedbread-ai/mxbai-rerank-xsmall-v1'). "
+                    #         "Optional: Specific reranker model to use (e.g., 'jinaai/jina-reranker-v3'). "
                     #         "If not provided, uses the default from configuration."
                     #     ),
                     # },

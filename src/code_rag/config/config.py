@@ -43,7 +43,7 @@ CODE_RAG_ADDITIONAL_IGNORE_PATTERNS=
 CODE_RAG_RERANKER_ENABLED=false
 
 # Reranker model to use
-CODE_RAG_RERANKER_MODEL=mixedbread-ai/mxbai-rerank-xsmall-v1
+CODE_RAG_RERANKER_MODEL=jinaai/jina-reranker-v3
 
 # Type of reranking to perform
 CODE_RAG_RERANKER_MULTIPLIER=2
@@ -120,7 +120,7 @@ class Config:
             "CODE_RAG_RERANKER_ENABLED", "true"
         ).lower() in ("true", "1", "yes")
         self.reranker_model = os.getenv(
-            "CODE_RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+            "CODE_RAG_RERANKER_MODEL", "jinaai/jina-reranker-v3"
         )
         self.reranker_multiplier = int(os.getenv("CODE_RAG_RERANKER_MULTIPLIER", "2"))
 

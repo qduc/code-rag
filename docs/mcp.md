@@ -125,7 +125,7 @@ The MCP server shares configuration with the CLI via environment variables:
 | `CODE_RAG_CHUNK_SIZE` | Characters per chunk | `1024` |
 | `CODE_RAG_BATCH_SIZE` | Batch size when processing | `32` |
 | `CODE_RAG_RERANKER_ENABLED` | Enable semantic reranking | `true` / `false` |
-| `CODE_RAG_RERANKER_MODEL` | Cross-encoder reranker model | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| `CODE_RAG_RERANKER_MODEL` | Cross-encoder reranker model | `jinaai/jina-reranker-v3` |
 | `CODE_RAG_RERANKER_MULTIPLIER` | Retrieval multiplier before reranking | `2` |
 
 Note: The Code-RAG CLI uses these variables for embedding, chunking, batching,
