@@ -116,6 +116,7 @@ class CrossEncoderReranker(RerankerInterface):
         documents: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents using cross-encoder scoring.

@@ -89,7 +89,6 @@ def format_search_results(
         if symbol_parts:
             header_parts.append(" | ".join(symbol_parts))
 
-        header_parts.append(f"({similarity:.2f})")
         header = " ".join(header_parts)
 
         output_lines.append(header)
@@ -136,11 +135,8 @@ async def list_tools() -> list[Tool]:
                 "## Reranking Parameters\n"
                 "- enable_reranking: true (HIGHLY RECOMMENDED). Finds primary functions vs just references.\n"
                 "- reranker_multiplier: 2 (Fast, quality) or 5 (Comprehensive).\n"
-                "  Use 5 for architecture, unfamiliar code, or if search needs to be deeper.\n\n"
-                "## Score Interpretation\n"
-                "IGNORE ABSOLUTE SCORES - focus on content quality.\n"
-                "- Reranking scores (0.02-0.99) use a different algorithm than vector search.\n"
-                "- Low scores (e.g. 0.05) can still be highly relevant results.\n\n"
+                "  Use 5 for architecture, unfamiliar code, or if search needs to be deeper.\n"
+                "- reranker_model: Optional. Choose a specific model (e.g. 'mixedbread-ai/mxbai-rerank-xsmall-v1').\n\n"
                 "## Tips\n"
                 "- Reranker surfaces essential config alongside implementation.\n"
                 "- Semantic search finds code/docs — you synthesize the answer.\n"
@@ -197,6 +193,13 @@ async def list_tools() -> list[Tool]:
                         ),
                         "default": 2,
                     },
+                    # "reranker_model": {
+                    #     "type": "string",
+                    #     "description": (
+                    #         "Optional: Specific reranker model to use (e.g., 'mixedbread-ai/mxbai-rerank-xsmall-v1'). "
+                    #         "If not provided, uses the default from configuration."
+                    #     ),
+                    # },
                 },
                 "required": ["codebase_path", "query"],
             },
@@ -258,6 +261,7 @@ async def call_tool(
             include_paths = arguments.get("include_paths")
             enable_reranking = arguments.get("enable_reranking", False)
             reranker_multiplier = arguments.get("reranker_multiplier", 2)
+            reranker_model = arguments.get("reranker_model")
 
             if not codebase_path:
                 return [
@@ -293,6 +297,7 @@ async def call_tool(
                 include_paths=include_paths,
                 rerank=enable_reranking,
                 reranker_multiplier=reranker_multiplier,
+                reranker_model=reranker_model,
             )
 
             # Format and return results

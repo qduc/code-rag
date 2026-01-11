@@ -198,7 +198,6 @@ class TestFormatSearchResults:
 
         # New compact format: file:lines (score)
         assert "src/auth.py:1-10" in output
-        assert "0.95" in output
         assert "def login" in output
         assert "---" in output
 
@@ -225,8 +224,6 @@ class TestFormatSearchResults:
         # New compact format
         assert "src/auth.py:1-10" in output
         assert "src/database.py:20-30" in output
-        assert "0.95" in output
-        assert "0.87" in output
 
     def test_format_result_without_line_numbers(self):
         """Test formatting results without line number information."""
@@ -240,7 +237,6 @@ class TestFormatSearchResults:
         output = format_search_results(results)
 
         assert "src/auth.py" in output
-        assert "0.95" in output
         # Should not have line numbers if start_line/end_line are missing
         assert ":1-" not in output
 

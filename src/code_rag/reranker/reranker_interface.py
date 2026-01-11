@@ -14,6 +14,7 @@ class RerankerInterface(ABC):
         documents: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents based on relevance to the query.

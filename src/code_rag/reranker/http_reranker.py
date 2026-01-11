@@ -36,6 +36,7 @@ class HttpReranker(RerankerInterface):
         documents: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         top_k: int = 5,
+        model: Optional[str] = None,
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents using the shared server.
@@ -61,6 +62,7 @@ class HttpReranker(RerankerInterface):
                     "metadatas": metadatas,
                     "top_k": top_k,
                     "client_id": self.client_id,
+                    "model": model,
                 },
                 timeout=CONNECTION_TIMEOUT,
             )

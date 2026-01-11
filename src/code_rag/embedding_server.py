@@ -206,6 +206,7 @@ class EmbeddingServer:
             metadatas: Optional[List[Dict[str, Any]]] = None
             top_k: int = 5
             client_id: str
+            model: Optional[str] = None
 
         class DimensionRequest(PydanticBaseModel):
             client_id: str
@@ -293,10 +294,39 @@ class EmbeddingServer:
         async def rerank(request: RerankRequest):
             """Rerank documents."""
             self._update_heartbeat(request.client_id)
-            self._load_models()
 
-            if self._reranker is None:
+            # Use requested model or default from config
+            target_model = request.model or self.config.get_reranker_model()
+
+            # Check if reranking is enabled at all
+            if not self.config.is_reranker_enabled() and not request.model:
                 return {"error": "Reranker not enabled", "results": []}
+
+            # Handle model loading/switching
+            with self._models_lock:
+                # Always ensure models are initialized (loads embedding + default reranker if none)
+                self._load_models()
+
+                # Switch reranker if different model requested
+                if self._reranker is None or (
+                    hasattr(self._reranker, "model_name")
+                    and self._reranker.model_name != target_model
+                ):
+                    print(
+                        f"Loading/Switching reranker to {target_model}...",
+                        file=sys.stderr,
+                    )
+                    if self._reranker and hasattr(self._reranker, "unload_model"):
+                        self._reranker.unload_model()
+
+                    from .reranker.cross_encoder_reranker import CrossEncoderReranker
+
+                    idle_timeout = self.config.get_model_idle_timeout()
+                    self._reranker = CrossEncoderReranker(
+                        target_model,
+                        lazy_load=False,
+                        idle_timeout=idle_timeout,
+                    )
 
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(

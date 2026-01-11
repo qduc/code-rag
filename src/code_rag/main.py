@@ -193,7 +193,7 @@ def query_session(
                 else:
                     similarity = 1 - distance  # Convert cosine distance to similarity
 
-                # Build header: file:lines | symbol_info (score)
+                # Build header: file:lines | symbol_info
                 # Format matches MCP server output for consistency
                 if start_line and end_line:
                     header_parts = [f"{file_path}:{start_line}-{end_line}"]
@@ -210,7 +210,6 @@ def query_session(
                 if symbol_parts:
                     header_parts.append(" | ".join(symbol_parts))
 
-                header_parts.append(f"({similarity:.2f})")
                 header = " ".join(header_parts)
 
                 print(header)

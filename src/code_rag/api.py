@@ -139,12 +139,21 @@ class CodeRAGAPI:
         self.reranker: Optional[RerankerInterface] = None
 
         if reranker_enabled:
-            self._load_reranker()
+            self._load_reranker(reranker_model)
 
-    def _load_reranker(self):
-        """Load the reranker model if not already loaded."""
+    def _load_reranker(self, model_name: Optional[str] = None):
+        """Load the reranker model if not already loaded or if different model requested."""
+        target_model = model_name or self.reranker_model_name
+
+        # If already loaded and matches target, nothing to do
         if self.reranker is not None:
-            return
+            if (
+                hasattr(self.reranker, "model_name")
+                and self.reranker.model_name == target_model
+            ):
+                return
+            # If standard reranker with different model, we'll recreate it
+            # (HttpReranker doesn't store model_name, so it will fall through)
 
         try:
             if self._use_shared_server:
@@ -154,14 +163,22 @@ class CodeRAGAPI:
                 # Share client ID with embedding model for unified heartbeat
                 if hasattr(self.embedding_model, "client_id"):
                     self._http_client_id = self.embedding_model.client_id
-                self.reranker = HttpReranker(
-                    port=self._shared_server_port,
-                    client_id=self._http_client_id or "",
-                )
+
+                # If we already have a reranker, we don't need to recreate HttpReranker
+                # as the model selection is handled per-request in Http mode
+                if self.reranker is None:
+                    self.reranker = HttpReranker(
+                        port=self._shared_server_port,
+                        client_id=self._http_client_id or "",
+                    )
             else:
                 idle_timeout = self.config.get_model_idle_timeout()
+                # Unload old model if it exists
+                if self.reranker is not None:
+                    self.reranker.unload_model()
+
                 self.reranker = CrossEncoderReranker(
-                    self.reranker_model_name,
+                    target_model,
                     lazy_load=self.lazy_load_models,
                     idle_timeout=idle_timeout,
                 )
@@ -521,6 +538,7 @@ class CodeRAGAPI:
         include_paths: Optional[List[str]] = None,
         rerank: bool = True,
         reranker_multiplier: Optional[int] = None,
+        reranker_model: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search over the indexed codebase.
@@ -569,7 +587,7 @@ class CodeRAGAPI:
 
         # Ensure reranker is loaded if requested
         if rerank:
-            self._load_reranker()
+            self._load_reranker(reranker_model)
 
         if rerank and self.reranker is not None:
             multiplier = reranker_multiplier or self.reranker_multiplier
@@ -627,6 +645,7 @@ class CodeRAGAPI:
                     documents,
                     metadatas=results["metadatas"][0],
                     top_k=n_results,
+                    model=reranker_model,
                 )
 
                 # Only update results if reranker returned valid results
