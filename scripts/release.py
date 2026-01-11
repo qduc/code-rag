@@ -118,7 +118,12 @@ def main():
     run_command(f'git tag -a v{new_version} -m "version {new_version}"')
     print(f"Committed and tagged v{new_version}")
 
-    # 3. Build
+    # 3. Push the changes
+    run_command("git push")
+    run_command("git push --tags")
+    print(f"Pushed changes and tag v{new_version}")
+
+    # 4. Build
     print("Building package...")
     if os.path.exists("dist"):
         import shutil
