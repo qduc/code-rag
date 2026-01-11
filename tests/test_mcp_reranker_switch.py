@@ -138,7 +138,7 @@ async def test_api_search_rerank_parameter():
 
     with (
         patch("code_rag.api.Config") as MockConfig,
-        patch("code_rag.api.OpenAIEmbedding"),
+        patch("code_rag.api.SentenceTransformerEmbedding"),
         patch("code_rag.api.ChromaDatabase"),
         patch("code_rag.api.CrossEncoderReranker") as MockRerankerClass,
     ):
