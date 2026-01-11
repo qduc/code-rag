@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-rag-mcp"
-version = "0.3.3"
+version = "0.3.4"
 description = "MCP server for efficient code search"
 readme = "README.md"
 requires-python = ">=3.10, <3.14"
