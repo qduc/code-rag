@@ -43,11 +43,11 @@ def validate_bump(bump, current_version):
     parts = current_version.split(".")
     if len(parts) == 3:
         major, minor, patch = map(int, parts)
-        if bump in ["patch", "p"]:
+        if bump in ["patch", "p", "1"]:
             return f"{major}.{minor}.{patch + 1}"
-        elif bump in ["minor", "m"]:
+        elif bump in ["minor", "m", "2"]:
             return f"{major}.{minor + 1}.0"
-        elif bump in ["major", "M"]:
+        elif bump in ["major", "3"]:
             return f"{major + 1}.0.0"
     if re.match(r"^\d+\.\d+\.\d+$", bump):
         return bump
@@ -83,13 +83,15 @@ def main():
         new_version = validate_bump(bump, current_version)
         if not new_version:
             print(
-                "Invalid bump type. Use patch/p, minor/m, major/M, or a version like 1.2.3"
+                "Invalid bump type. Use 1/patch/p, 2/minor/m, 3/major, or a version like 1.2.3"
             )
             sys.exit(1)
     else:
         while True:
             bump_input = (
-                input("Bump version? (patch/p/minor/m/major/M) or enter new version: ")
+                input(
+                    "Bump version? (1: patch, 2: minor, 3: major) or enter new version: "
+                )
                 .strip()
                 .lower()
             )
@@ -100,7 +102,7 @@ def main():
                 break
             else:
                 print(
-                    "Invalid input. Please enter 'patch', 'p', 'minor', 'm', 'major', 'M' or a version like '1.2.3'."
+                    "Invalid input. Please enter 1, 2, 3 or 'patch', 'p', 'minor', 'm', 'major' or a version like '1.2.3'."
                 )
 
     print(f"Bumping to version: {new_version}")
