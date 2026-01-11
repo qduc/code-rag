@@ -120,27 +120,28 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_codebase",
             description=(
-                "PRIMARY TOOL for finding code using semantic search with AI reranker.\n\n"
-                "## Recommended Settings (Default)\n"
-                "enable_reranking: true, reranker_multiplier: 2\n"
-                "Provides 60-70% better relevance than vector search alone.\n\n"
-                "## Query Strategy\n"
-                "Describe your intent in natural language. Reranking works great for architecture!\n"
-                '✓ "how does authentication work" (Finds design docs/diagrams)\n'
-                '✓ "image upload validation logic" (Finds primary implementation)\n'
-                '✓ "retry logic with exponential backoff" or "persistence architecture"\n\n'
-                "Avoid:\n"
-                "✗ Raw syntax: 'req.on(\"close\", () => {' (Use concepts instead)\n"
-                '✗ Extremely vague: "code" or "functions"\n\n'
-                "## Reranking Parameters\n"
-                "- enable_reranking: true (HIGHLY RECOMMENDED). Finds primary functions vs just references.\n"
-                "- reranker_multiplier: 2 (Fast, quality) or 5 (Comprehensive).\n"
-                "  Use 5 for architecture, unfamiliar code, or if search needs to be deeper.\n"
-                "- reranker_model: Optional. Choose a specific model (e.g. 'jinaai/jina-reranker-v3').\n\n"
+                "Semantic code search with AI reranking. Finds relevant code by meaning, not keywords.\n\n"
+                "## CRITICAL: Write Specific Queries\n"
+                "Vague queries return noise. Specific queries find exactly what you need.\n\n"
+                "GOOD (specific intent + context):\n"
+                '• "retry logic with exponential backoff in HTTP client"\n'
+                '• "JWT token validation and refresh flow"\n'
+                '• "database connection pooling configuration"\n'
+                '• "error handling for file upload timeout"\n'
+                '• "how user permissions are checked before API access"\n\n'
+                "BAD (too vague - avoid these):\n"
+                '• "authentication" → TOO BROAD. Try: "password hashing during user login"\n'
+                '• "error handling" → TOO BROAD. Try: "error handling when payment fails"\n'
+                '• "config" → TOO BROAD. Try: "database connection config loading"\n'
+                '• "utils" or "helper" → MEANINGLESS. Describe what the util DOES.\n\n'
+                "## Query Formula\n"
+                "[WHAT] + [WHERE/WHEN/HOW] = Good Query\n"
+                '• "caching" → "Redis caching for API response memoization"\n'
+                '• "logging" → "structured logging setup for request tracing"\n\n'
                 "## Tips\n"
-                "- Reranker surfaces essential config alongside implementation.\n"
-                "- Semantic search finds code/docs — you synthesize the answer.\n"
-                "- Follow up with Read tool for complete understanding."
+                "• Include the PROBLEM you're solving, not just keywords\n"
+                "• Mention specific technologies if relevant (Redis, JWT, WebSocket)\n"
+                "• Follow up with file read for full context"
             ),
             inputSchema={
                 "type": "object",
@@ -151,11 +152,16 @@ async def list_tools() -> list[Tool]:
                     },
                     "query": {
                         "type": "string",
-                        "description": "What you're looking for, in natural language (e.g., 'authentication logic')",
+                        "description": (
+                            "SPECIFIC natural language query describing what you need. "
+                            "Include context: WHAT you're looking for + WHY/WHERE/HOW. "
+                            "GOOD: 'JWT token refresh when access token expires' "
+                            "BAD: 'token' or 'auth' (too vague, will return noise)"
+                        ),
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of results to return (default: 5, max: 20)",
+                        "description": "Maximum number of results to return (default: 5 (recommended), max: 10)",
                         "default": 5,
                     },
                     "expand_context": {
@@ -176,23 +182,23 @@ async def list_tools() -> list[Tool]:
                             "(e.g. ['src/code_rag/api', 'tests/'])."
                         ),
                     },
-                    "enable_reranking": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, use a semantic reranker to improve result quality "
-                            "(slower but more accurate)"
-                        ),
-                        "default": False,
-                    },
-                    "reranker_multiplier": {
-                        "type": "integer",
-                        "description": (
-                            "Retrieval multiplier for reranking. If n results are requested, "
-                            "the system retrieves n * multiplier candidates to rerank. "
-                            "Higher values improve quality but increase latency."
-                        ),
-                        "default": 2,
-                    },
+                    # "enable_reranking": {
+                    #     "type": "boolean",
+                    #     "description": (
+                    #         "If true, use a semantic reranker to improve result quality "
+                    #         "(slower but more accurate)"
+                    #     ),
+                    #     "default": False,
+                    # },
+                    # "reranker_multiplier": {
+                    #     "type": "integer",
+                    #     "description": (
+                    #         "Retrieval multiplier for reranking. If n results are requested, "
+                    #         "the system retrieves n * multiplier candidates to rerank. "
+                    #         "Higher values improve quality but increase latency."
+                    #     ),
+                    #     "default": 5,
+                    # },
                     # "reranker_model": {
                     #     "type": "string",
                     #     "description": (
