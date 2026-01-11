@@ -117,40 +117,34 @@ server = Server("code-rag")
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """List available Code-RAG tools.
-
-    Philosophy: One tool, does one thing well - semantic code search.
-    Everything else (reading files, etc.) Claude already has tools for.
-    """
     return [
         Tool(
             name="search_codebase",
             description=(
-                "PRIMARY TOOL for finding code in a codebase using semantic search.\n"
-                "  Query Strategy (Best -> Good -> Avoid):\n"
-                "  1. BEST: Specific concepts + domain terminology\n"
-                "     'stream retry logic when upstream fails' -> finds retry mechanisms\n"
-                "     'client disconnect cleanup during active request' -> finds connection handling\n"
-                "     'authentication token refresh before expiry' -> finds token management\n"
-                "  2. GOOD: Known identifiers + behavior context\n"
-                "     'StreamingNotSupportedError retry logic' -> finds exact error handling\n"
-                "     'persistence.markError cleanup' -> finds error state management\n"
-                "     'handleRegularStreaming client disconnect' -> finds specific handler\n"
-                "  3. EXPLORATORY: Natural behavior descriptions\n"
-                "     'code that validates API keys before requests'\n"
-                "     'retry logic for failed network requests'\n"
-                "     'caching strategy to avoid expensive operations'\n"
-                "  4. AVOID: Syntax, generic terms, or open-ended questions\n"
-                "     'req.on(\"close\", () => {' -> semantic search doesn't understand syntax\n"
-                "     'error handling' -> too broad, use specific error types/scenarios\n"
-                "     'how does auth work' -> not a search query, ask for specific components\n"
-                "     'explain the architecture' -> search concrete parts: 'request routing', 'middleware pipeline'\n"
-                "  Tips:\n"
-                "  - Semantic search finds code, not explanations — you synthesize the answer\n"
-                "  - More specific concepts = better results (use domain terminology)\n"
-                "  - If open-ended, break into specific searches: 'cache invalidation', 'cache TTL', 'cache keys'\n"
-                "  - Results ranked by relevance score (higher = more relevant)\n"
-                "  - Follow up with Read/Grep for complete understanding"
+                "PRIMARY TOOL for finding code using semantic search with AI reranker.\n\n"
+                "## Recommended Settings (Default)\n"
+                "enable_reranking: true, reranker_multiplier: 2\n"
+                "Provides 60-70% better relevance than vector search alone.\n\n"
+                "## Query Strategy\n"
+                "Describe your intent in natural language. Reranking works great for architecture!\n"
+                '✓ "how does authentication work" (Finds design docs/diagrams)\n'
+                '✓ "image upload validation logic" (Finds primary implementation)\n'
+                '✓ "retry logic with exponential backoff" or "persistence architecture"\n\n'
+                "Avoid:\n"
+                "✗ Raw syntax: 'req.on(\"close\", () => {' (Use concepts instead)\n"
+                '✗ Extremely vague: "code" or "functions"\n\n'
+                "## Reranking Parameters\n"
+                "- enable_reranking: true (HIGHLY RECOMMENDED). Finds primary functions vs just references.\n"
+                "- reranker_multiplier: 2 (Fast, quality) or 5 (Comprehensive).\n"
+                "  Use 5 for architecture, unfamiliar code, or if search needs to be deeper.\n\n"
+                "## Score Interpretation\n"
+                "IGNORE ABSOLUTE SCORES - focus on content quality.\n"
+                "- Reranking scores (0.02-0.99) use a different algorithm than vector search.\n"
+                "- Low scores (e.g. 0.05) can still be highly relevant results.\n\n"
+                "## Tips\n"
+                "- Reranker surfaces essential config alongside implementation.\n"
+                "- Semantic search finds code/docs — you synthesize the answer.\n"
+                "- Follow up with Read tool for complete understanding."
             ),
             inputSchema={
                 "type": "object",
