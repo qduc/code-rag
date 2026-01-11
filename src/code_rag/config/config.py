@@ -63,6 +63,23 @@ class Config:
 
     def __init__(self):
         """Initialize configuration from environment variables or defaults."""
+        self._loaded_files: dict[Path, float] = {}
+        # Keep track of initial environment to allow clean reloads
+        self._initial_env = {
+            k: v for k, v in os.environ.items() if k.startswith("CODE_RAG_")
+        }
+        self.reload()
+
+    def reload(self) -> None:
+        """Reload configuration from files and environment."""
+        # Restore initial environment to ensure Shell > File precedence during reload
+        for k in list(os.environ.keys()):
+            if k.startswith("CODE_RAG_"):
+                if k in self._initial_env:
+                    os.environ[k] = self._initial_env[k]
+                else:
+                    del os.environ[k]
+
         self._load_config_files()
         self.embedding_model = os.getenv(
             "CODE_RAG_EMBEDDING_MODEL", "nomic-ai/CodeRankEmbed"
@@ -130,59 +147,50 @@ class Config:
         ).lower() in ("true", "1", "yes")
         self.shared_server_port = self._get_int_env("CODE_RAG_SHARED_SERVER_PORT", 8199)
 
-    def _load_config_files(self) -> None:
-        """
-        Load configuration from config files in precedence order.
+    def has_changed(self) -> bool:
+        """Check if any of the configuration files have changed on disk."""
+        # Re-check the same paths we would check during loading
+        paths_to_check = self._get_paths_to_check()
 
-        1. Custom config file (CODE_RAG_CONFIG_FILE)
-        2. Current directory (code-rag.config)
-        3. User config (~/.config/code-rag/config) - Auto-created if missing
-        """
-        paths_to_check = []
+        for path in paths_to_check:
+            if path.is_file():
+                mtime = path.stat().st_mtime
+                if path not in self._loaded_files or mtime > self._loaded_files[path]:
+                    return True
+            elif path in self._loaded_files:
+                # File was there but now it's gone
+                return True
 
-        # 1. Direct path via env var (highest file priority)
+        return False
+
+    def _get_paths_to_check(self) -> list[Path]:
+        """Get the list of config file paths to check in precedence order."""
+        paths = []
         if custom_path := os.getenv("CODE_RAG_CONFIG_FILE"):
-            paths_to_check.append(Path(custom_path).expanduser())
+            paths.append(Path(custom_path).expanduser())
+        paths.append(Path.cwd() / "code-rag.config")
+        paths.append(Path.home() / ".config" / "code-rag" / "config")
+        paths.append(Path(__file__).resolve().parent.parent.parent / ".env")
+        return paths
 
-        # 2. Local directory project config
-        paths_to_check.append(Path.cwd() / "code-rag.config")
+    def _load_config_files(self) -> None:
+        self._loaded_files = {}
+        paths_to_check = self._get_paths_to_check()
 
-        # 3. User configuration (XDG-style)
-        # We prefer ~/.config/code-rag/config
+        # Handle user config auto-creation if needed
         user_config_dir = Path.home() / ".config" / "code-rag"
         user_config_file = user_config_dir / "config"
-
-        # Auto-create if it doesn't exist and we aren't testing
         if not user_config_file.exists():
             try:
                 user_config_dir.mkdir(parents=True, exist_ok=True)
                 user_config_file.write_text(DEFAULT_CONFIG, encoding="utf-8")
-                # Only print via stderr to avoid corrupting MCP stdout if this happens during tool use
-                # But Config might be initialized during module import, so be careful.
-                # Safe to write, maybe skip print or print to stderr.
             except Exception:
-                # working in a read-only fs or permission error, skip creation
                 pass
-
-        paths_to_check.append(user_config_file)
-
-        # 4. Package source fallback (for dev envs, keeping .env here as it's gitignored)
-        paths_to_check.append(Path(__file__).resolve().parent.parent.parent / ".env")
-
-        # Load found files. override=False means:
-        # - Shell vars > File vars
-        # - We want specific files to override general ones?
-        # load_dotenv defaults to override=False (don't overwrite system env).
-        # But for file-vs-file, we want the first ones we check (files) to take precedence?
-        # Actually load_dotenv adds to os.environ but doesn't overwrite if exists.
-        # So we should load High Priority files FIRST.
-        # Order above was: Custom -> Local -> User -> Package.
-        # This is correct for load_dotenv(override=False).
-        # The first file loaded sets the var. Subsequent files won't overwrite it.
 
         for path in paths_to_check:
             if path.is_file():
                 load_dotenv(path)
+                self._loaded_files[path] = path.stat().st_mtime
 
     @staticmethod
     def _get_default_database_path() -> str:

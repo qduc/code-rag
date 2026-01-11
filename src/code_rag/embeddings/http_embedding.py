@@ -61,7 +61,6 @@ class HttpEmbedding(EmbeddingInterface):
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._heartbeat_stop = threading.Event()
         self._server_process: Optional[subprocess.Popen] = None
-        self._dimension_cache: Optional[int] = None
 
         # Ensure server is running
         self._ensure_server()
@@ -305,12 +304,8 @@ class HttpEmbedding(EmbeddingInterface):
 
     def get_embedding_dimension(self) -> int:
         """Get the embedding dimension."""
-        if self._dimension_cache is not None:
-            return self._dimension_cache
-
         result = self._request("embedding_dimension", {})
-        self._dimension_cache = result["dimension"]
-        return self._dimension_cache
+        return result["dimension"]
 
     def start_background_loading(self):
         """No-op for HTTP client - server handles model loading."""

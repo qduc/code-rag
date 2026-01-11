@@ -126,30 +126,30 @@ class EmbeddingServer:
             if self._models_loaded:
                 return
 
-            print(
-                f"Loading embedding model: {self.config.get_embedding_model()}",
-                file=sys.stderr,
-            )
-
-            # Load embedding model
-            model_name = self.config.get_embedding_model()
-            if model_name.startswith("text-embedding-"):
-                from .embeddings.openai_embedding import OpenAIEmbedding
-
-                self._embedding_model = OpenAIEmbedding(model_name)
-            else:
-                from .embeddings.sentence_transformer_embedding import (
-                    SentenceTransformerEmbedding,
+            # Load embedding model if not already loaded
+            if self._embedding_model is None:
+                print(
+                    f"Loading embedding model: {self.config.get_embedding_model()}",
+                    file=sys.stderr,
                 )
+                model_name = self.config.get_embedding_model()
+                if model_name.startswith("text-embedding-"):
+                    from .embeddings.openai_embedding import OpenAIEmbedding
 
-                # Use configured idle timeout (default 30 min) to release VRAM
-                idle_timeout = self.config.get_model_idle_timeout()
-                self._embedding_model = SentenceTransformerEmbedding(
-                    model_name, lazy_load=False, idle_timeout=idle_timeout
-                )
+                    self._embedding_model = OpenAIEmbedding(model_name)
+                else:
+                    from .embeddings.sentence_transformer_embedding import (
+                        SentenceTransformerEmbedding,
+                    )
 
-            # Load reranker if enabled
-            if self.config.is_reranker_enabled():
+                    # Use configured idle timeout (default 30 min) to release VRAM
+                    idle_timeout = self.config.get_model_idle_timeout()
+                    self._embedding_model = SentenceTransformerEmbedding(
+                        model_name, lazy_load=False, idle_timeout=idle_timeout
+                    )
+
+            # Load reranker if enabled and not already loaded
+            if self.config.is_reranker_enabled() and self._reranker is None:
                 print(
                     f"Loading reranker model: {self.config.get_reranker_model()}",
                     file=sys.stderr,
@@ -164,7 +164,7 @@ class EmbeddingServer:
                 )
 
             self._models_loaded = True
-            print("Models loaded successfully", file=sys.stderr)
+            print("Models prepared successfully", file=sys.stderr)
 
     def create_app(self):
         """Create the FastAPI application."""
@@ -172,13 +172,15 @@ class EmbeddingServer:
 
         @asynccontextmanager
         async def lifespan(app):
-            # Startup: start idle checker
+            # Startup: start idle checker and config watcher
             checker_task = asyncio.create_task(self._idle_checker())
+            config_watcher_task = asyncio.create_task(self._config_watcher())
             yield
             # Shutdown
             checker_task.cancel()
+            config_watcher_task.cancel()
             try:
-                await checker_task
+                await asyncio.gather(checker_task, config_watcher_task)
             except asyncio.CancelledError:
                 pass
 
@@ -211,7 +213,17 @@ class EmbeddingServer:
         @app.get("/health")
         async def health():
             """Health check endpoint."""
-            return {"status": "ok", "clients": len(self.clients)}
+            return {
+                "status": "ok",
+                "clients": len(self.clients),
+                "embedding_model": self.config.get_embedding_model(),
+                "reranker_enabled": self.config.is_reranker_enabled(),
+                "reranker_model": (
+                    self.config.get_reranker_model()
+                    if self.config.is_reranker_enabled()
+                    else None
+                ),
+            }
 
         @app.post("/heartbeat")
         async def heartbeat(request: HeartbeatRequest):
@@ -317,6 +329,61 @@ class EmbeddingServer:
         """Update client heartbeat timestamp."""
         with self.clients_lock:
             self.clients[client_id] = time.time()
+
+    async def _config_watcher(self):
+        """Background task to watch for config file changes and reload."""
+        while True:
+            await asyncio.sleep(5)  # Check every 5 seconds
+            try:
+                if self.config.has_changed():
+                    print("Config file change detected, reloading...", file=sys.stderr)
+                    self.config.reload()
+                    self._handle_config_reload()
+            except Exception as e:
+                print(f"Error checking for config changes: {e}", file=sys.stderr)
+
+    def _handle_config_reload(self):
+        """Handle necessary updates after config reload."""
+        with self._models_lock:
+            # Check if embedding model changed
+            new_embedding_model = self.config.get_embedding_model()
+            if (
+                self._embedding_model
+                and self._embedding_model.model_name != new_embedding_model
+            ):
+                print(
+                    f"Embedding model changed to {new_embedding_model}, unloading old model...",
+                    file=sys.stderr,
+                )
+                if hasattr(self._embedding_model, "unload_model"):
+                    self._embedding_model.unload_model()
+                self._embedding_model = None
+                self._models_loaded = False
+
+            # Check if reranker changed or was enabled/disabled
+            new_reranker_model = self.config.get_reranker_model()
+            reranker_enabled = self.config.is_reranker_enabled()
+
+            if not reranker_enabled:
+                if self._reranker:
+                    print("Reranker disabled by config, unloading...", file=sys.stderr)
+                    if hasattr(self._reranker, "unload_model"):
+                        self._reranker.unload_model()
+                    self._reranker = None
+                    # No need to reset _models_loaded if embedding model is still fine
+            else:
+                if self._reranker and self._reranker.model_name != new_reranker_model:
+                    print(
+                        f"Reranker model changed to {new_reranker_model}, unloading old model...",
+                        file=sys.stderr,
+                    )
+                    if hasattr(self._reranker, "unload_model"):
+                        self._reranker.unload_model()
+                    self._reranker = None
+                    self._models_loaded = False
+                elif not self._reranker:
+                    # Reranker was enabled but not loaded yet
+                    self._models_loaded = False
 
     async def _idle_checker(self):
         """Background task to check for idle state and shutdown."""
