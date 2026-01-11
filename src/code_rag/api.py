@@ -511,6 +511,7 @@ class CodeRAGAPI:
         expand_context: bool = False,
         file_types: Optional[List[str]] = None,
         include_paths: Optional[List[str]] = None,
+        rerank: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search over the indexed codebase.
@@ -554,7 +555,7 @@ class CodeRAGAPI:
             # Fetch significantly more results to account for filtering
             base_n_results = max(n_results * 10, 50)
 
-        if self.reranker is not None:
+        if rerank and self.reranker is not None:
             db_n_results = base_n_results * self.reranker_multiplier
         else:
             db_n_results = base_n_results
@@ -597,8 +598,8 @@ class CodeRAGAPI:
             if not results["documents"][0]:
                 return []
 
-        # Apply reranking if enabled
-        if self.reranker is not None:
+        # Apply reranking if enabled and requested
+        if rerank and self.reranker is not None:
             try:
                 # Extract documents from results
                 documents = results["documents"][0]
@@ -641,7 +642,7 @@ class CodeRAGAPI:
             results["distances"][0],
         ):
             # Calculate similarity score
-            if self.reranker is not None:
+            if rerank and self.reranker is not None:
                 similarity = distance  # Already a relevance score (higher = better)
             else:
                 similarity = 1 - distance  # Convert cosine distance to similarity

@@ -186,6 +186,14 @@ async def list_tools() -> list[Tool]:
                             "(e.g. ['src/code_rag/api', 'tests/'])."
                         ),
                     },
+                    "enable_reranking": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, use a semantic reranker to improve result quality "
+                            "(slower but more accurate)"
+                        ),
+                        "default": False,
+                    },
                 },
                 "required": ["codebase_path", "query"],
             },
@@ -245,6 +253,7 @@ async def call_tool(
             expand_context = arguments.get("expand_context", False)
             file_types = arguments.get("file_types")
             include_paths = arguments.get("include_paths")
+            enable_reranking = arguments.get("enable_reranking", False)
 
             if not codebase_path:
                 return [
@@ -278,6 +287,7 @@ async def call_tool(
                 expand_context=expand_context,
                 file_types=file_types,
                 include_paths=include_paths,
+                rerank=enable_reranking,
             )
 
             # Format and return results
