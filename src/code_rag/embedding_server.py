@@ -133,10 +133,27 @@ class EmbeddingServer:
                     file=sys.stderr,
                 )
                 model_name = self.config.get_embedding_model()
-                if model_name.startswith("text-embedding-"):
-                    from .embeddings.openai_embedding import OpenAIEmbedding
+                # Known cloud provider prefixes supported by LiteLLM
+                cloud_prefixes = [
+                    "openai/",
+                    "azure/",
+                    "vertex_ai/",
+                    "bedrock/",
+                    "cohere/",
+                    "voyage/",
+                    "mistral/",
+                    "anthropic/",
+                    "huggingface/",
+                    "replicate/",
+                    "together_ai/",
+                ]
 
-                    self._embedding_model = OpenAIEmbedding(model_name)
+                if model_name.startswith("text-embedding-") or any(
+                    model_name.startswith(prefix) for prefix in cloud_prefixes
+                ):
+                    from .embeddings.litellm_embedding import LiteLLMEmbedding
+
+                    self._embedding_model = LiteLLMEmbedding(model_name)
                 else:
                     from .embeddings.sentence_transformer_embedding import (
                         SentenceTransformerEmbedding,

@@ -10,8 +10,12 @@ DEFAULT_CONFIG = """# Configuration for code-rag
 
 # Embedding model to use for generating vector embeddings
 # Options:
-# - nomic-ai/CodeRankEmbed (Recommended for code)
-# - text-embedding-3-small (Requires OPENAI_API_KEY)
+# - nomic-ai/CodeRankEmbed (Recommended for code, runs locally)
+# - text-embedding-3-small (OpenAI, requires OPENAI_API_KEY)
+# - vertex_ai/text-embedding-004 (Google Vertex AI)
+# - azure/text-embedding-3-small (Azure OpenAI)
+# - cohere/embed-english-v3.0 (Cohere)
+# Any model supported by LiteLLM can be used (prefix with provider/)
 CODE_RAG_EMBEDDING_MODEL=nomic-ai/CodeRankEmbed
 
 # Database type: 'chroma' or 'qdrant'

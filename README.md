@@ -284,6 +284,21 @@ export CODE_RAG_RERANKER_ENABLED="true"
 export CODE_RAG_ADDITIONAL_IGNORE_PATTERNS="*.tmp,*.bak,logs/"
 ```
 
+### Supported Cloud Providers
+
+Code-RAG supports various cloud embedding providers via [LiteLLM](https://docs.litellm.ai/docs/providers). Set `CODE_RAG_EMBEDDING_MODEL` to the provider-specific model name and provide the necessary credentials:
+
+| Provider | Model Example | Required Environment Variables |
+|----------|---------------|--------------------------------|
+| **OpenAI** | `text-embedding-3-small` | `OPENAI_API_KEY` |
+| **Azure OpenAI** | `azure/text-embedding-3-small` | `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` |
+| **Google Vertex AI** | `vertex_ai/text-embedding-004` | `VERTEX_AI_PROJECT`, `VERTEX_AI_LOCATION`, plus `gcloud auth application-default login` |
+| **Cohere** | `cohere/embed-english-v3.0` | `COHERE_API_KEY` |
+| **AWS Bedrock** | `bedrock/amazon.titan-embed-text-v1` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION_NAME` |
+
+For other providers (HuggingFace, Mistral, etc.), refer to the [LiteLLM documentation](https://docs.litellm.ai/docs/providers) for model names and required environment variables.
+
+
 ### Config File Format
 
 Config files use the same format (key=value):

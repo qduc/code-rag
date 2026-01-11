@@ -15,7 +15,7 @@ from .database.chroma_database import ChromaDatabase
 from .database.database_interface import DatabaseInterface
 from .database.qdrant_database import QdrantDatabase
 from .embeddings.embedding_interface import EmbeddingInterface
-from .embeddings.openai_embedding import OpenAIEmbedding
+from .embeddings.litellm_embedding import LiteLLMEmbedding
 from .embeddings.sentence_transformer_embedding import SentenceTransformerEmbedding
 from .index.metadata_index import FileMetadata, MetadataIndex
 from .processor.file_processor import FileProcessor
@@ -208,8 +208,34 @@ class CodeRAGAPI:
 
         # Otherwise, load models locally
         idle_timeout = self.config.get_model_idle_timeout()
-        if model_name.startswith("text-embedding-"):
-            return OpenAIEmbedding(model_name, idle_timeout=idle_timeout)
+
+        # Check for cloud provider models (OpenAI or via LiteLLM)
+        # We consider it a cloud model if:
+        # 1. It starts with "text-embedding-" (legacy OpenAI check)
+        # 2. It contains "/" and the prefix is a known cloud provider
+        # 3. It's explicitly "openai/..."
+
+        # Known cloud provider prefixes supported by LiteLLM
+        cloud_prefixes = [
+            "openai/",
+            "azure/",
+            "vertex_ai/",
+            "bedrock/",
+            "cohere/",
+            "voyage/",
+            "mistral/",
+            "anthropic/",
+            "huggingface/",
+            "replicate/",
+            "together_ai/",
+        ]
+
+        is_cloud_model = model_name.startswith("text-embedding-") or any(
+            model_name.startswith(prefix) for prefix in cloud_prefixes
+        )
+
+        if is_cloud_model:
+            return LiteLLMEmbedding(model_name, idle_timeout=idle_timeout)
         else:
             return SentenceTransformerEmbedding(
                 model_name, lazy_load=lazy_load, idle_timeout=idle_timeout
