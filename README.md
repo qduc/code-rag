@@ -26,27 +26,36 @@ Instead of grepping for function names, ask "authentication logic" and find all 
 
 ## Quick Start
 
+### 1. Install
+
+**Using [uv](https://github.com/astral-sh/uv) (recommended):**
 ```bash
-# Create virtual environment, optional but recommended
-python -m venv .venv
-source .venv/bin/activate
+uv tool install code-rag-mcp && code-rag-setup
+```
 
-# Install (lean base)
-pip install -e .
+**Using pip:**
+```bash
+pip install code-rag-mcp && code-rag-setup
+```
 
-# Then pick ONE backend (recommended):
-# - Local models (downloads model weights on first use)
-pip install -e ".[local]"
-# - OR cloud providers (OpenAI/Azure/Vertex/etc via LiteLLM)
-pip install -e ".[cloud]"
+**New to Python?** Use the one-command installer:
+```bash
+curl -sSL https://raw.githubusercontent.com/qduc/code-rag/main/scripts/install.sh | bash
+```
 
-# Alternatively, run an interactive installer:
-code-rag-setup
+### 2. Add to Claude
 
-# Use the interactive CLI search
-code-rag-cli
+```bash
+claude mcp add code-rag -- code-rag-mcp
+```
 
-# To use as MCP server see below section
+That's it! Claude can now search your codebase semantically.
+
+### 3. Try it out (optional)
+
+Test with the CLI before using with Claude:
+```bash
+code-rag-cli --path /path/to/your/project
 ```
 
 ## Claude's Opinion About Code-RAG (take it with a huge grain of salt!)
