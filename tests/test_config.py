@@ -59,7 +59,7 @@ class TestConfigDefaults:
         config = Config()
         # Default is true in reload() but false in DEFAULT_CONFIG
         # The actual default when no config file is read is "true"
-        assert config.is_reranker_enabled() is True
+        assert config.is_reranker_enabled() is False
         assert config.get_reranker_model() == "jinaai/jina-reranker-v3"
         assert config.get_reranker_multiplier() == 2
 

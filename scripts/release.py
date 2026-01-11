@@ -62,6 +62,12 @@ def main():
         )
         sys.exit(1)
 
+    # Run tests
+    print("Running test suite...")
+    # Exit script if tests fail
+    run_command("pytest -q")
+    print("Tests passed")
+
     current_version = get_current_version()
     if not current_version:
         print("Error: Could not find version in pyproject.toml")
