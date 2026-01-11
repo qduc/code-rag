@@ -61,9 +61,21 @@ find_python() {
     return 1
 }
 
-# Check if we're already in a virtual environment
+# Check if we're already in a virtual environment (excluding base environments)
 in_virtualenv() {
-    [[ -n "$VIRTUAL_ENV" ]] || [[ -n "$CONDA_PREFIX" ]]
+    # If VIRTUAL_ENV is set, we're in a standard virtual environment
+    if [[ -n "$VIRTUAL_ENV" ]]; then
+        return 0
+    fi
+
+    # If in a Conda environment, check that it's not the 'base' environment
+    if [[ -n "$CONDA_PREFIX" ]]; then
+        if [[ "$CONDA_DEFAULT_ENV" != "base" ]]; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 print_header

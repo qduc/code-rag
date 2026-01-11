@@ -415,12 +415,12 @@ def _run_verification() -> bool:
     _print()
 
     try:
-        # Try importing the main module
+        # Keep this import light to avoid slow optional deps (e.g., torch/sentence-transformers).
         subprocess.run(
             [
                 sys.executable,
                 "-c",
-                "from code_rag.api import CodeRAGAPI; print('Import OK')",
+                "from code_rag import __version__; from code_rag.config.config import Config; print('Import OK')",
             ],
             check=True,
             capture_output=True,
@@ -439,6 +439,68 @@ def _run_verification() -> bool:
     except subprocess.TimeoutExpired:
         _print(f"{YELLOW}⚠{NC} Verification timed out")
         return False
+
+
+def _should_offer_predownload(backend: str, enable_reranker: bool) -> bool:
+    """Return True if there's anything to pre-download."""
+    return backend == "local" or enable_reranker
+
+
+def _predownload_models(backend: str, model: str, enable_reranker: bool) -> None:
+    """Pre-download selected models so first use is faster."""
+    _print_section("Model Pre-download")
+    _print("Downloading selected models now so first use is faster.")
+    _print("This may take a few minutes and several hundred MB.")
+    _print()
+
+    if backend == "local":
+        embedding = None
+        try:
+            from .embeddings.sentence_transformer_embedding import (
+                SentenceTransformerEmbedding,
+            )
+
+            embedding = SentenceTransformerEmbedding(
+                model_name=model, lazy_load=False, idle_timeout=0
+            )
+            embedding.get_embedding_dimension()
+            _print(f"{GREEN}✓{NC} Embedding model downloaded: {model}")
+        except ImportError as e:
+            _print(f"{YELLOW}⚠{NC} Embedding download skipped: {e}")
+        except Exception as e:
+            _print(f"{YELLOW}⚠{NC} Embedding download failed: {e}")
+        finally:
+            if embedding is not None:
+                try:
+                    embedding.unload_model()
+                except Exception:
+                    pass
+    else:
+        _print(f"{YELLOW}○{NC} Skipping embedding download (cloud backend)")
+
+    if enable_reranker:
+        reranker = None
+        try:
+            from .reranker.cross_encoder_reranker import CrossEncoderReranker
+
+            reranker = CrossEncoderReranker(
+                lazy_load=False,
+                idle_timeout=0,
+            )
+            reranker.rerank("warmup", ["warmup"])
+            _print(f"{GREEN}✓{NC} Reranker model downloaded")
+        except ImportError as e:
+            _print(f"{YELLOW}⚠{NC} Reranker download skipped: {e}")
+        except Exception as e:
+            _print(f"{YELLOW}⚠{NC} Reranker download failed: {e}")
+        finally:
+            if reranker is not None:
+                try:
+                    reranker.unload_model()
+                except Exception:
+                    pass
+    else:
+        _print(f"{YELLOW}○{NC} Reranker disabled; skipping download")
 
 
 def _print_next_steps(backend: str, model: str) -> None:
@@ -536,6 +598,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             _write_config(config, config_path)
     else:
         _write_config(config, config_path)
+
+    # Pre-download models (optional)
+    if _should_offer_predownload(backend, enable_reranker):
+        if _ask_yes_no(
+            "Pre-download selected models now to speed up first use?",
+            default=False,
+        ):
+            _predownload_models(backend, model, enable_reranker)
 
     # Verification
     if _ask_yes_no("Run quick verification test?", default=True):
