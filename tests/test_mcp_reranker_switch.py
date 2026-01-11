@@ -45,6 +45,7 @@ async def test_mcp_search_codebase_reranking_switch():
             file_types=None,
             include_paths=None,
             rerank=True,
+            reranker_multiplier=2,
         )
 
         # 2. Test with reranking disabled (explicitly)
@@ -64,6 +65,7 @@ async def test_mcp_search_codebase_reranking_switch():
             file_types=None,
             include_paths=None,
             rerank=False,
+            reranker_multiplier=2,
         )
 
         # 3. Test default (should be False)
@@ -79,6 +81,28 @@ async def test_mcp_search_codebase_reranking_switch():
             file_types=None,
             include_paths=None,
             rerank=False,
+            reranker_multiplier=2,
+        )
+
+        # 4. Test with custom reranker_multiplier
+        mock_api.search.reset_mock()
+        arguments = {
+            "codebase_path": "/test/path",
+            "query": "test query",
+            "enable_reranking": True,
+            "reranker_multiplier": 5,
+        }
+        await call_tool("search_codebase", arguments)
+
+        # Check that api.search was called with reranker_multiplier=5
+        mock_api.search.assert_called_with(
+            "test query",
+            n_results=5,
+            expand_context=False,
+            file_types=None,
+            include_paths=None,
+            rerank=True,
+            reranker_multiplier=5,
         )
 
 

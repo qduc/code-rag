@@ -512,6 +512,7 @@ class CodeRAGAPI:
         file_types: Optional[List[str]] = None,
         include_paths: Optional[List[str]] = None,
         rerank: bool = True,
+        reranker_multiplier: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search over the indexed codebase.
@@ -523,6 +524,9 @@ class CodeRAGAPI:
             expand_context: If True, fetch adjacent chunks to provide more context
             file_types: Optional list of file extensions to filter by (e.g. ['.py', '.md'])
             include_paths: Optional list of path substrings to include (e.g. ['src/code_rag/', 'tests/'])
+            rerank: Whether to use reranker if available
+            reranker_multiplier: Optional override for the reranker multiplier. If not provided,
+                                uses the default multiplier from initialization.
 
         Returns:
             List of search results, each containing:
@@ -556,7 +560,8 @@ class CodeRAGAPI:
             base_n_results = max(n_results * 10, 50)
 
         if rerank and self.reranker is not None:
-            db_n_results = base_n_results * self.reranker_multiplier
+            multiplier = reranker_multiplier or self.reranker_multiplier
+            db_n_results = base_n_results * multiplier
         else:
             db_n_results = base_n_results
 

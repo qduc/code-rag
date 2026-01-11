@@ -194,6 +194,15 @@ async def list_tools() -> list[Tool]:
                         ),
                         "default": False,
                     },
+                    "reranker_multiplier": {
+                        "type": "integer",
+                        "description": (
+                            "Retrieval multiplier for reranking. If n results are requested, "
+                            "the system retrieves n * multiplier candidates to rerank. "
+                            "Higher values improve quality but increase latency."
+                        ),
+                        "default": 2,
+                    },
                 },
                 "required": ["codebase_path", "query"],
             },
@@ -254,6 +263,7 @@ async def call_tool(
             file_types = arguments.get("file_types")
             include_paths = arguments.get("include_paths")
             enable_reranking = arguments.get("enable_reranking", False)
+            reranker_multiplier = arguments.get("reranker_multiplier", 2)
 
             if not codebase_path:
                 return [
@@ -288,6 +298,7 @@ async def call_tool(
                 file_types=file_types,
                 include_paths=include_paths,
                 rerank=enable_reranking,
+                reranker_multiplier=reranker_multiplier,
             )
 
             # Format and return results
