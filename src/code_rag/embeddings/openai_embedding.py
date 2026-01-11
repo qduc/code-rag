@@ -3,7 +3,11 @@
 import os
 from typing import List, Optional
 
-from openai import OpenAI
+try:
+    # Optional dependency (installed via: code-rag-mcp[cloud])
+    from openai import OpenAI  # type: ignore
+except Exception:  # pragma: no cover
+    OpenAI = None
 
 from .embedding_interface import EmbeddingInterface
 
@@ -25,6 +29,11 @@ class OpenAIEmbedding(EmbeddingInterface):
             api_key: OpenAI API key. If not provided, will look for OPENAI_API_KEY env var.
             idle_timeout: Not used for API-based models (kept for interface consistency)
         """
+        if OpenAI is None:
+            raise ImportError(
+                "OpenAI embedding backend is not installed. "
+                "Install optional dependencies with: pip install 'code-rag-mcp[cloud]'"
+            )
         self.model_name = model_name
         self.client = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
         # OpenAI is API-based, no model to unload, but we store the timeout for consistency

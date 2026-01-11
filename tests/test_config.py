@@ -13,6 +13,16 @@ from code_rag.config.config import DEFAULT_CONFIG, Config
 class TestConfigDefaults:
     """Test default configuration values."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_home(self, monkeypatch, tmp_path):
+        """Ensure user-level config files don't leak into tests.
+
+        Config() reads ~/.config/code-rag/config if present. On developer machines,
+        that file may exist with custom values, making defaults tests flaky.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
     def test_default_embedding_model(self, monkeypatch):
         """Test default embedding model."""
         # Clear relevant env vars

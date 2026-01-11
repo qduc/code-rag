@@ -31,8 +31,17 @@ Instead of grepping for function names, ask "authentication logic" and find all 
 python -m venv .venv
 source .venv/bin/activate
 
-# Install
+# Install (lean base)
 pip install -e .
+
+# Then pick ONE backend (recommended):
+# - Local models (downloads model weights on first use)
+pip install -e ".[local]"
+# - OR cloud providers (OpenAI/Azure/Vertex/etc via LiteLLM)
+pip install -e ".[cloud]"
+
+# Alternatively, run an interactive installer:
+code-rag-setup
 
 # Use the interactive CLI search
 code-rag-cli

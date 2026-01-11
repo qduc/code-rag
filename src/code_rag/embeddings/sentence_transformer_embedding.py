@@ -1,11 +1,17 @@
 """SentenceTransformers implementation of the embedding interface."""
 
+from __future__ import annotations
+
 import gc
 import threading
 import time
 from typing import List, Optional
 
-from sentence_transformers import SentenceTransformer
+try:
+    # Optional dependency (installed via: code-rag-mcp[local])
+    from sentence_transformers import SentenceTransformer  # type: ignore
+except Exception:  # pragma: no cover
+    SentenceTransformer = None
 
 from .embedding_interface import EmbeddingInterface
 
@@ -57,6 +63,11 @@ class SentenceTransformerEmbedding(EmbeddingInterface):
         """Load the model (called synchronously or in background)."""
         with self._loading_lock:
             if self.model is None:
+                if SentenceTransformer is None:
+                    raise ImportError(
+                        "Local embedding backend (sentence-transformers) is not installed. "
+                        "Install optional dependencies with: pip install 'code-rag-mcp[local]'"
+                    )
                 self.model = SentenceTransformer(
                     self.model_name, trust_remote_code=True
                 )

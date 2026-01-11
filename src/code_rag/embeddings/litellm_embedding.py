@@ -2,13 +2,25 @@
 
 from typing import List, Optional
 
-from litellm import embedding
+try:
+    # Optional dependency (installed via: code-rag-mcp[cloud])
+    from litellm import embedding  # type: ignore
+except Exception:  # pragma: no cover
+    embedding = None
 
 from .embedding_interface import EmbeddingInterface
 
 
 class LiteLLMEmbedding(EmbeddingInterface):
     """LiteLLM implementation for generating embeddings via various providers."""
+
+    @staticmethod
+    def _require_backend() -> None:
+        if embedding is None:
+            raise ImportError(
+                "LiteLLM embedding backend is not installed. "
+                "Install optional dependencies with: pip install 'code-rag-mcp[cloud]'"
+            )
 
     def __init__(
         self,
@@ -39,6 +51,7 @@ class LiteLLMEmbedding(EmbeddingInterface):
         Returns:
             A list of floats representing the embedding vector
         """
+        self._require_backend()
         # Replace newlines to avoid negative performance impact for some models
         text = text.replace("\n", " ")
         response = embedding(model=self.model_name, input=[text], api_key=self.api_key)
@@ -54,6 +67,7 @@ class LiteLLMEmbedding(EmbeddingInterface):
         Returns:
             A list of embedding vectors
         """
+        self._require_backend()
         # Replace newlines
         texts = [text.replace("\n", " ") for text in texts]
         response = embedding(model=self.model_name, input=texts, api_key=self.api_key)
@@ -81,6 +95,7 @@ class LiteLLMEmbedding(EmbeddingInterface):
 
         # Fallback: make a dummy call to get dimension
         try:
+            self._require_backend()
             return len(self.embed("test"))
         except Exception:
             # Default to 1536 as a safe fallback

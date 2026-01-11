@@ -19,6 +19,13 @@ def pytest_configure(config):
     # Disable shared server mode during tests to avoid connection issues
     import os
 
+    # Isolate user-level config so developer machines don't leak ~/.config values into tests.
+    # Many tests assume defaults from DEFAULT_CONFIG.
+    import tempfile
+
+    os.environ.setdefault("HOME", tempfile.mkdtemp(prefix="code-rag-test-home-"))
+    os.environ.pop("XDG_CONFIG_HOME", None)
+
     os.environ["CODE_RAG_SHARED_SERVER"] = "false"
 
 

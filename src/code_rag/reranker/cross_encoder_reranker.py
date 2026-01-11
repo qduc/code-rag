@@ -1,11 +1,17 @@
 """Cross-encoder implementation for semantic reranking."""
 
+from __future__ import annotations
+
 import gc
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from sentence_transformers import CrossEncoder
+try:
+    # Optional dependency (installed via: code-rag-mcp[local] or code-rag-mcp[reranker])
+    from sentence_transformers import CrossEncoder  # type: ignore
+except Exception:  # pragma: no cover
+    CrossEncoder = None
 
 from .reranker_interface import RerankerInterface
 
@@ -49,6 +55,11 @@ class CrossEncoderReranker(RerankerInterface):
         """Load the model (called synchronously or in background)."""
         with self._loading_lock:
             if self.model is None:
+                if CrossEncoder is None:
+                    raise ImportError(
+                        "Cross-encoder reranker (sentence-transformers) is not installed. "
+                        "Install optional dependencies with: pip install 'code-rag-mcp[reranker]'"
+                    )
                 self.model = CrossEncoder(self.model_name)
 
     def start_background_loading(self):

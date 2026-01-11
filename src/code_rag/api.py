@@ -234,12 +234,23 @@ class CodeRAGAPI:
             model_name.startswith(prefix) for prefix in cloud_prefixes
         )
 
-        if is_cloud_model:
-            return LiteLLMEmbedding(model_name, idle_timeout=idle_timeout)
-        else:
-            return SentenceTransformerEmbedding(
-                model_name, lazy_load=lazy_load, idle_timeout=idle_timeout
-            )
+        try:
+            if is_cloud_model:
+                return LiteLLMEmbedding(model_name, idle_timeout=idle_timeout)
+            else:
+                return SentenceTransformerEmbedding(
+                    model_name, lazy_load=lazy_load, idle_timeout=idle_timeout
+                )
+        except ImportError as e:
+            # Provide a friendly hint about optional extras.
+            raise ImportError(
+                f"Failed to initialize embedding backend for model '{model_name}'.\n"
+                "This project uses optional extras to keep the base install lean.\n"
+                "- For local models: pip install 'code-rag-mcp[local]'\n"
+                "- For cloud providers via LiteLLM/OpenAI: pip install 'code-rag-mcp[cloud]'\n"
+                "Or run: code-rag-setup\n\n"
+                f"Original error: {e}"
+            ) from e
 
     def _create_database(
         self, database_type: str, database_path: str
