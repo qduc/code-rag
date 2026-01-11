@@ -134,32 +134,40 @@ class CodeRAGAPI:
         # Initialize database
         self.database = self._create_database(database_type, self.database_path)
 
-        # Initialize reranker if enabled
+        # Initialize reranker
+        self.reranker_model_name = reranker_model or self.config.get_reranker_model()
         self.reranker: Optional[RerankerInterface] = None
-        if reranker_enabled:
-            try:
-                if self._use_shared_server:
-                    # Use HTTP reranker (shares model with embedding server)
-                    from .reranker.http_reranker import HttpReranker
 
-                    # Share client ID with embedding model for unified heartbeat
-                    if hasattr(self.embedding_model, "client_id"):
-                        self._http_client_id = self.embedding_model.client_id
-                    self.reranker = HttpReranker(
-                        port=self._shared_server_port,
-                        client_id=self._http_client_id or "",
-                    )
-                else:
-                    model_name = reranker_model or self.config.get_reranker_model()
-                    idle_timeout = self.config.get_model_idle_timeout()
-                    self.reranker = CrossEncoderReranker(
-                        model_name,
-                        lazy_load=lazy_load_models,
-                        idle_timeout=idle_timeout,
-                    )
-            except Exception as e:
-                print(f"Warning: Failed to load reranker ({e}), disabling reranking")
-                self.reranker = None
+        if reranker_enabled:
+            self._load_reranker()
+
+    def _load_reranker(self):
+        """Load the reranker model if not already loaded."""
+        if self.reranker is not None:
+            return
+
+        try:
+            if self._use_shared_server:
+                # Use HTTP reranker (shares model with embedding server)
+                from .reranker.http_reranker import HttpReranker
+
+                # Share client ID with embedding model for unified heartbeat
+                if hasattr(self.embedding_model, "client_id"):
+                    self._http_client_id = self.embedding_model.client_id
+                self.reranker = HttpReranker(
+                    port=self._shared_server_port,
+                    client_id=self._http_client_id or "",
+                )
+            else:
+                idle_timeout = self.config.get_model_idle_timeout()
+                self.reranker = CrossEncoderReranker(
+                    self.reranker_model_name,
+                    lazy_load=self.lazy_load_models,
+                    idle_timeout=idle_timeout,
+                )
+        except Exception as e:
+            print(f"Warning: Failed to load reranker ({e}), disabling reranking")
+            self.reranker = None
 
     def start_background_loading(self):
         """Start loading models in background threads for faster startup."""
@@ -558,6 +566,10 @@ class CodeRAGAPI:
         if file_types or include_paths:
             # Fetch significantly more results to account for filtering
             base_n_results = max(n_results * 10, 50)
+
+        # Ensure reranker is loaded if requested
+        if rerank:
+            self._load_reranker()
 
         if rerank and self.reranker is not None:
             multiplier = reranker_multiplier or self.reranker_multiplier
