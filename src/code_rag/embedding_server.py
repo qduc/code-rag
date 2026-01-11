@@ -19,7 +19,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 # Lazy imports to keep startup fast
 uvicorn = None
@@ -201,6 +201,7 @@ class EmbeddingServer:
         class RerankRequest(PydanticBaseModel):
             query: str
             documents: List[str]
+            metadatas: Optional[List[Dict[str, Any]]] = None
             top_k: int = 5
             client_id: str
 
@@ -289,7 +290,10 @@ class EmbeddingServer:
             results = await loop.run_in_executor(
                 None,
                 lambda: self._reranker.rerank(
-                    request.query, request.documents, request.top_k
+                    request.query,
+                    request.documents,
+                    metadatas=request.metadatas,
+                    top_k=request.top_k,
                 ),
             )
             return {"results": results}

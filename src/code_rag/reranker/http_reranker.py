@@ -4,7 +4,7 @@ This client connects to the shared embedding server for reranking,
 sharing the model with other MCP instances.
 """
 
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -31,7 +31,11 @@ class HttpReranker(RerankerInterface):
         self.client_id = client_id
 
     def rerank(
-        self, query: str, documents: List[str], top_k: int = 5
+        self,
+        query: str,
+        documents: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        top_k: int = 5,
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents using the shared server.
@@ -39,6 +43,7 @@ class HttpReranker(RerankerInterface):
         Args:
             query: The search query string
             documents: List of document texts to rerank
+            metadatas: Optional list of metadata for each document
             top_k: Number of top results to return
 
         Returns:
@@ -53,6 +58,7 @@ class HttpReranker(RerankerInterface):
                 json={
                     "query": query,
                     "documents": documents,
+                    "metadatas": metadatas,
                     "top_k": top_k,
                     "client_id": self.client_id,
                 },

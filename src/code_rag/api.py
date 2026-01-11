@@ -605,7 +605,10 @@ class CodeRAGAPI:
 
                 # Rerank documents
                 reranked_indices = self.reranker.rerank(
-                    query, documents, top_k=n_results
+                    query,
+                    documents,
+                    metadatas=results["metadatas"][0],
+                    top_k=n_results,
                 )
 
                 # Only update results if reranker returned valid results

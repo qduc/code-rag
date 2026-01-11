@@ -3,7 +3,7 @@
 import gc
 import threading
 import time
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sentence_transformers import CrossEncoder
 
@@ -111,7 +111,11 @@ class CrossEncoderReranker(RerankerInterface):
         self._last_used = time.time()
 
     def rerank(
-        self, query: str, documents: List[str], top_k: int = 5
+        self,
+        query: str,
+        documents: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        top_k: int = 5,
     ) -> List[Tuple[int, float]]:
         """
         Rerank documents using cross-encoder scoring.
@@ -119,6 +123,7 @@ class CrossEncoderReranker(RerankerInterface):
         Args:
             query: The search query string
             documents: List of document texts to rerank
+            metadatas: Optional list of metadata for each document
             top_k: Number of top results to return
 
         Returns:
@@ -129,8 +134,28 @@ class CrossEncoderReranker(RerankerInterface):
         if not documents:
             return []
 
+        # Use metadata to provide context to the reranker if available
+        processed_docs = []
+        if metadatas and len(metadatas) == len(documents):
+            for doc, meta in zip(documents, metadatas):
+                file_path = meta.get("file_path", "Unknown")
+                function_name = meta.get("function_name")
+                class_name = meta.get("class_name")
+
+                context_parts = [f"File: {file_path}"]
+                if class_name:
+                    context_parts.append(f"Class: {class_name}")
+                if function_name:
+                    context_parts.append(f"Function: {function_name}")
+
+                context_str = " | ".join(context_parts)
+                # Following the Good example: File: utils.js | Function: validateAge | Code: ...
+                processed_docs.append(f"{context_str} | Code: {doc}")
+        else:
+            processed_docs = documents
+
         # Create query-document pairs
-        pairs = [[query, doc] for doc in documents]
+        pairs = [[query, doc] for doc in processed_docs]
 
         # Score all pairs
         scores = self.model.predict(pairs, convert_to_numpy=True)
