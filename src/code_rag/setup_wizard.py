@@ -46,6 +46,7 @@ CLOUD_MODELS = [
 ]
 
 # ANSI color codes
+RED = "\033[0;31m"
 GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
 BLUE = "\033[0;34m"
@@ -464,11 +465,15 @@ def _print_next_steps(backend: str, model: str) -> None:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    do_global_install = "--install" in args
+
     _print_header()
 
     # Detect environment
     env = _detect_environment()
-    _print_environment_info(env)
+    if not do_global_install:
+        _print_environment_info(env)
 
     # Choose backend
     backend = _ask_backend(env)
@@ -499,7 +504,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     _print()
 
     # Install
-    if _ask_yes_no("Install/upgrade dependencies now?", default=True):
+    if do_global_install:
+        # Global install via uv tool
+        requirement = f"{PACKAGE_NAME}[{','.join(extras)}]"
+        _print(f"\n{GREEN}▶{NC} Installing {PACKAGE_NAME} globally via uv tool...")
+        cmd = ["uv", "tool", "install", "--force", requirement]
+        _print(f"  {' '.join(cmd)}")
+        try:
+            subprocess.run(cmd, check=True)
+            _print(f"{GREEN}✓{NC} Global installation complete!")
+        except Exception as e:
+            _print(f"{RED}✗{NC} Installation failed: {e}")
+            return 1
+    elif _ask_yes_no("Install/upgrade dependencies now?", default=True):
         requirement = f"{PACKAGE_NAME}[{','.join(extras)}]"
         if not _pip_install(["--upgrade", requirement]):
             _print(f"\n{YELLOW}⚠{NC} Installation had issues. You can try manually:")

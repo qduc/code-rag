@@ -30,8 +30,9 @@ Instead of grepping for function names, ask "authentication logic" and find all 
 
 **Using [uv](https://github.com/astral-sh/uv) (recommended):**
 ```bash
-uv tool install code-rag-mcp && code-rag-setup
+uvx --from code-rag-mcp code-rag-setup --install
 ```
+*Note: This ensures your configuration persists even after updates.*
 
 **Using pip:**
 ```bash
@@ -171,10 +172,12 @@ claude mcp add code-rag --transport stdio $(which code-rag-mcp)
 # Clone and install
 git clone https://github.com/qduc/code-rag.git
 cd code-rag
+python -m venv .venv
+source .venv/bin/activate
 pip install -e .
 
 # Register with Claude Code
-claude mcp add code-rag --transport stdio $(pwd)/.venv/bin/code-rag-mcp
+claude mcp add code-rag --transport stdio $(which code-rag-mcp)
 ```
 
 ### Configuration
@@ -374,15 +377,15 @@ Other languages use line-aware chunking (still works, just less context-aware).
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - Minimal dependencies (ChromaDB + sentence-transformers by default)
 - Optional: OpenAI API key, Qdrant server
 
 ## Troubleshooting
 
-**Import errors?** `pip install -e . --force-reinstall`
+**Import errors?** `pip install --force-reinstall --upgrade code-rag-mcp` (or `pip install -e .` if developing locally)
 
-**Database issues?** `code-rag --reindex`
+**Database issues?** `code-rag-cli --reindex`
 
 **Memory issues?** `export CODE_RAG_BATCH_SIZE="16"`
 
